@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dqythxfomwc6n"]
 
 [ext_resource type="Script" uid="uid://b6q8a2lxe1tdg" path="res://scripts/player.gd" id="1_player"]
-[ext_resource type="PackedScene" uid="uid://bi1htx3kn84rl" path="res://assets/blender/walk-man2.blend" id="2_qhqgy"]
+[ext_resource type="PackedScene" path="res://assets/blender/walk-man2.glb" id="2_qhqgy"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.35

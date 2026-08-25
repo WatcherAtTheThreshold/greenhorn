@@ -374,8 +374,9 @@ func _mount_imports() -> void:
 		# A 1.7 m character on a 0.3 m plinth put its head exactly where a
 		# fixed 2 m label was, and wore the caption like a hat.
 		var top: float = maxf(_visual_top(holder), holder.global_position.y + 0.4)
-		_label(names[i], Vector3(px, top + 0.42, PLINTH_Z), 32, Palette.STONE_LIGHT)
-		_label(note, Vector3(px, top + 0.16, PLINTH_Z), 24, Palette.ACCENT)
+		_label(names[i], Vector3(px, top + 0.62, PLINTH_Z), 32, Palette.STONE_LIGHT)
+		_label(note, Vector3(px, top + 0.36, PLINTH_Z), 24, Palette.ACCENT)
+		_label(_census(holder), Vector3(px, top + 0.14, PLINTH_Z), 22, Palette.STONE_LIGHT)
 
 	# a 1 m cube beside the row, so a scale mistake is obvious at a glance
 	var refx := float(names.size()) * 1.9 + 1.8
@@ -427,3 +428,28 @@ func _autoplay(inst: Node) -> String:
 	AnimPick.loop(ap, pick)
 	ap.play(pick)
 	return "%d anim: %s" % [list.size(), ", ".join(list)]
+
+
+## What arrived structurally, not just what it can play. Two skeletons in one
+## file is the single most common cause of "why is there a man riding my cat" —
+## an object you hid in Blender rather than deleted, since hiding does not
+## exclude anything from an export.
+func _census(inst: Node) -> String:
+	var bones: Array[String] = []
+	for c in inst.find_children("*", "Skeleton3D", true, false):
+		bones.append(str((c as Skeleton3D).get_bone_count()))
+	var meshes := 0
+	var verts := 0
+	for c in inst.find_children("*", "MeshInstance3D", true, false):
+		meshes += 1
+		var m := (c as MeshInstance3D).mesh
+		if m == null:
+			continue
+		for i in m.get_surface_count():
+			verts += m.surface_get_array_len(i)
+	var rig := "no rig"
+	if bones.size() == 1:
+		rig = "1 rig (%s bones)" % bones[0]
+	elif bones.size() > 1:
+		rig = "%d RIGS (%s bones)" % [bones.size(), " + ".join(bones)]
+	return "%s - %d mesh, %d verts" % [rig, meshes, verts]
