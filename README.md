@@ -32,9 +32,28 @@ Filesystem -> Import -> Blender -> Blender Path**. After that Godot
 re-imports every time you hit save in Blender, so the loop is: save in
 Blender, alt-tab, it is already updated.
 
-To make an imported model *the player*, open `scenes/player.tscn` and set
-**Character Scene** on the root node. Animations called `idle` / `walk` /
-`run` get driven automatically.
+The player wears the first **rigged** model it finds in that folder, so
+usually there is nothing else to do. To pin it to one file, set
+**Character File** on the root of `scenes/player.tscn` (e.g. `cat.blend`).
+
+Animations get driven automatically if their names *start with* `idle`,
+`walk` or `run` — so `walk_002` and `Armature|Walk` both work. The plinth
+caption tells you what actually arrived.
+
+### Swapping models
+
+Delete the old file **from inside Godot** (FileSystem dock, right-click ->
+Delete), not from Explorer. Godot removes the source, its `.import` sidecar
+and the cached copy together, and fixes up references.
+
+Deleting the source but leaving the `.import` behind is the one thing to
+avoid. The `.import` is not a cache, it is a *pointer* to the imported copy
+in `.godot/` — orphan it and Godot happily goes on rendering a file you
+deleted, which is very hard to diagnose from the inside.
+
+Better still: **pick a filename and save over it.** Every rename mints a new
+UID and orphans every reference to the old name. Nothing in this project
+references your assets by name any more, so overwriting in place is free.
 
 ## What is out there
 

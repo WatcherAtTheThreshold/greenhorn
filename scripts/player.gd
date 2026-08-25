@@ -32,9 +32,21 @@ const CAM_SENS        := 0.0025   ## radians per pixel of mouse movement
 const CAM_LAG         := 12.0     ## how quickly the arm settles; higher = tighter
 const CAM_PUSH_MARGIN := 0.25     ## keep the camera this far off any wall it hits
 
-## Drop a rigged model here in the inspector and it replaces the placeholder.
-## Anything with an AnimationPlayer gets driven automatically (see _animate).
+## Which model to wear. Three ways, in priority order:
+##   1. character_scene, if you set it in the inspector
+##   2. anything already dragged into Body in the editor
+##   3. otherwise, a rigged model found in assets/blender/
+##
+## Case 3 loads by PATH at runtime rather than holding a reference in the
+## scene file. That matters: a .tscn that references an asset by UID breaks
+## the moment you rename or replace that asset, and then keeps rendering the
+## old one out of the import cache, which is genuinely hard to diagnose. This
+## way you can swap the contents of assets/blender/ freely and nothing here
+## needs touching.
 @export var character_scene: PackedScene
+## Leave blank to wear the first rigged model found. Set e.g. "cat.blend" to
+## pin it to one file.
+@export var character_file := ""
 
 var _yaw := 0.0
 var _pitch := -0.15
@@ -72,8 +84,7 @@ func _ready() -> void:
 	# character_scene in the inspector. Dragging it in is the obvious gesture
 	# in Godot and it is what a person actually does, so search Body for a rig
 	# regardless of how it got there. The export is just a convenience.
-	if character_scene:
-		body.add_child(character_scene.instantiate())
+	_adopt_model()
 
 	var has_model := false
 	for c in body.get_children():
@@ -93,6 +104,44 @@ func _ready() -> void:
 			_clip_run = _clip_walk
 		for clip in [_clip_idle, _clip_walk, _clip_run]:
 			AnimPick.loop(_anim, clip)
+
+
+const MODEL_DIR := "res://assets/blender/"
+
+## Put something in Body, by whichever route is available.
+func _adopt_model() -> void:
+	if character_scene:
+		body.add_child(character_scene.instantiate())
+		return
+
+	for c in body.get_children():
+		if c != placeholder and c is Node3D and (c as Node3D).visible:
+			return                      # already dragged in by hand
+
+	var dir := DirAccess.open(MODEL_DIR)
+	if dir == null:
+		return
+	var names: Array[String] = []
+	for f in dir.get_files():
+		var e := f.get_extension().to_lower()
+		if e == "blend" or e == "glb" or e == "gltf":
+			names.append(f)
+	names.sort()
+
+	for n in names:
+		if character_file != "" and n != character_file:
+			continue
+		var res := load(MODEL_DIR + n)
+		if not (res is PackedScene):
+			continue
+		var inst: Node = (res as PackedScene).instantiate()
+		# only wear something with a skeleton — otherwise the first thing in
+		# the folder might be a table, and you would be wearing the table
+		if inst.find_children("*", "Skeleton3D", true, false).is_empty():
+			inst.queue_free()
+			continue
+		body.add_child(inst)
+		return
 
 
 func _find_anim(n: Node) -> AnimationPlayer:
