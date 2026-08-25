@@ -100,3 +100,24 @@ merge-conflict. Every feel value is a `const` at the top of its script.
 - `palette.gd` — re-grade the whole world by editing one file.
 - Want bounce light? `env.sdfgi_enabled = true` in `_build_environment()`.
   It looks lovely outdoors and costs real frame time.
+
+## Experimenting
+
+This is a scratchpad — poke at it. It is in git precisely so that nothing you
+try is permanent:
+
+```
+git commit -am "wip"      before you start pulling things apart
+git diff                  what have I actually changed
+git checkout -- .         put it all back
+```
+
+The one operation worth doing carefully is **deleting or renaming assets**,
+and only because Godot keeps hidden state: a `.blend` has an `.import`
+sidecar pointing at a cached copy inside `.godot/`. Remove the source but
+leave the sidecar, and Godot will go on happily rendering the file you
+deleted. Do those two operations in Godot's FileSystem dock, which removes
+all three pieces together and fixes up references.
+
+Everything else — edit the constants, break the shaders, drag nodes about —
+is one `git checkout` from undone.

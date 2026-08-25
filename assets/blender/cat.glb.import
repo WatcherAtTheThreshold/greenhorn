@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://cb8jq17yp4w6v"
-path="res://.godot/imported/walk-man2.glb-23cd54ba7b74e69f1c48481b51a9186d.scn"
+uid="uid://busn2ojaf5o3w"
+path="res://.godot/imported/cat.glb-f36ab3d95ec4dbda1c9358850580c8a7.scn"
 
 [deps]
 
-source_file="res://assets/blender/walk-man2.glb"
-dest_files=["res://.godot/imported/walk-man2.glb-23cd54ba7b74e69f1c48481b51a9186d.scn"]
+source_file="res://assets/blender/cat.glb"
+dest_files=["res://.godot/imported/cat.glb-f36ab3d95ec4dbda1c9358850580c8a7.scn"]
 
 [params]
 
