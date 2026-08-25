@@ -51,6 +51,7 @@ var _anim: AnimationPlayer = null
 var _clip_idle := ""
 var _clip_walk := ""
 var _clip_run := ""
+var _idle_held := false
 
 
 func _ready() -> void:
@@ -67,11 +68,21 @@ func _ready() -> void:
 		if c is MeshInstance3D:
 			(c as MeshInstance3D).material_override = tint
 
+	# A model can arrive two ways: dragged into Body in the editor, or set on
+	# character_scene in the inspector. Dragging it in is the obvious gesture
+	# in Godot and it is what a person actually does, so search Body for a rig
+	# regardless of how it got there. The export is just a convenience.
 	if character_scene:
-		var inst := character_scene.instantiate()
-		body.add_child(inst)
-		placeholder.visible = false
-		_anim = _find_anim(inst)
+		body.add_child(character_scene.instantiate())
+
+	var has_model := false
+	for c in body.get_children():
+		if c != placeholder and c is Node3D and (c as Node3D).visible:
+			has_model = true
+	placeholder.visible = not has_model
+
+	_anim = _find_anim(body)
+	if _anim:
 		_clip_idle = AnimPick.find(_anim, "idle")
 		_clip_walk = AnimPick.find(_anim, "walk")
 		_clip_run  = AnimPick.find(_anim, "run")
@@ -80,13 +91,18 @@ func _ready() -> void:
 			_clip_walk = _clip_run
 		if _clip_run == "":
 			_clip_run = _clip_walk
-		for c in [_clip_idle, _clip_walk, _clip_run]:
-			AnimPick.loop(_anim, c)
+		for clip in [_clip_idle, _clip_walk, _clip_run]:
+			AnimPick.loop(_anim, clip)
 
 
 func _find_anim(n: Node) -> AnimationPlayer:
 	if n is AnimationPlayer:
 		return n
+	# Skip anything switched off in the editor. An old hidden copy of the
+	# model would otherwise win the search and animate invisibly, while the
+	# visible one stood there in its rest pose looking broken.
+	if n is Node3D and not (n as Node3D).visible:
+		return null
 	for c in n.get_children():
 		var found := _find_anim(c)
 		if found:
@@ -214,9 +230,22 @@ func _animate() -> void:
 	elif planar > 0.35:
 		want = _clip_walk
 	if want == "":
-		# nothing suitable — hold the rest pose rather than a frozen frame
-		if _anim.is_playing():
-			_anim.stop()
+		# No idle clip in this model. Holding the first frame of the walk
+		# reads far better than the rest pose, which for a rigged character
+		# is a T-pose. Make an idle action in Blender and this goes away.
+		if _clip_walk == "":
+			return
+		if not _idle_held:
+			# speed_scale rather than pause(): a paused player reports itself
+			# as not playing and drops current_animation, which makes this
+			# state impossible to reason about. Frozen-but-playing is honest.
+			_anim.play(_clip_walk)
+			_anim.seek(0.0, true)
+			_anim.speed_scale = 0.0
+			_idle_held = true
 		return
+	if _idle_held:
+		_anim.speed_scale = 1.0
+		_idle_held = false
 	if _anim.current_animation != want:
 		_anim.play(want)

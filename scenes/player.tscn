@@ -23,9 +23,6 @@ shape = SubResource("CapsuleShape3D_body")
 
 [node name="Body" type="Node3D" parent="." unique_id=499068051]
 
-[node name="walk-man" parent="Body" unique_id=511152310 instance=ExtResource("2_qhqgy")]
-visible = false
-
 [node name="Placeholder" type="Node3D" parent="Body" unique_id=1160682105]
 visible = false
 
