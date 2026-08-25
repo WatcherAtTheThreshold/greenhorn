@@ -48,6 +48,9 @@ var _spawn := Vector3.ZERO
 @onready var camera: Camera3D = $CamPivot/Camera
 
 var _anim: AnimationPlayer = null
+var _clip_idle := ""
+var _clip_walk := ""
+var _clip_run := ""
 
 
 func _ready() -> void:
@@ -69,6 +72,16 @@ func _ready() -> void:
 		body.add_child(inst)
 		placeholder.visible = false
 		_anim = _find_anim(inst)
+		_clip_idle = AnimPick.find(_anim, "idle")
+		_clip_walk = AnimPick.find(_anim, "walk")
+		_clip_run  = AnimPick.find(_anim, "run")
+		# no walk but a run? use it for both rather than standing frozen
+		if _clip_walk == "":
+			_clip_walk = _clip_run
+		if _clip_run == "":
+			_clip_run = _clip_walk
+		for c in [_clip_idle, _clip_walk, _clip_run]:
+			AnimPick.loop(_anim, c)
 
 
 func _find_anim(n: Node) -> AnimationPlayer:
@@ -195,12 +208,15 @@ func _animate() -> void:
 	if _anim == null:
 		return
 	var planar := Vector3(velocity.x, 0.0, velocity.z).length()
-	var want := "idle"
+	var want := _clip_idle
 	if planar > RUN_SPEED * 0.7:
-		want = "run"
+		want = _clip_run
 	elif planar > 0.35:
-		want = "walk"
-	if not _anim.has_animation(want):
+		want = _clip_walk
+	if want == "":
+		# nothing suitable — hold the rest pose rather than a frozen frame
+		if _anim.is_playing():
+			_anim.stop()
 		return
 	if _anim.current_animation != want:
 		_anim.play(want)

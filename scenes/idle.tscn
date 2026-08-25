@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://dqv4iwimwpi8"]
+
+[ext_resource type="PackedScene" uid="uid://bi1htx3kn84rl" path="res://assets/blender/walk-man2.blend" id="1_pm2hd"]
+
+[node name="idle" unique_id=1627869233 instance=ExtResource("1_pm2hd")]
+
+[node name="Skeleton3D" parent="walk" parent_id_path=PackedInt32Array(2145104843) index="0" unique_id=1981861297]
+bones/1/rotation = Quaternion(6.7346996e-08, 3.3026808e-08, -0.0051544355, 0.9999867)
+bones/3/rotation = Quaternion(7.1054274e-15, 1.5797576e-31, -1.1010124e-17, 1)
+bones/5/rotation = Quaternion(0.020901859, 0.006876841, -0.5937759, 0.8043295)
+bones/9/rotation = Quaternion(-0.03585476, 0.01861944, 0.5041071, 0.8626957)
+bones/13/rotation = Quaternion(-0.6810048, 0.07120009, 0.066471174, 0.7257717)
+bones/14/rotation = Quaternion(-0.03461942, -0.0009460892, -0.24451178, 0.96902776)
+bones/17/rotation = Quaternion(-0.69523126, -0.08340182, -0.06690521, 0.71078926)

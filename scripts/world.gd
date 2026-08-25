@@ -350,23 +350,80 @@ func _mount_imports() -> void:
 		var base := Vector3(px, 0.0, PLINTH_Z)
 		_box(Vector3(1.6, 0.3, 1.6),
 			Transform3D(Basis(), base + Vector3(0.0, 0.15, 0.0)), plinth)
-		_label(names[i], base + Vector3(0.0, 2.0, 0.0), 32, Palette.STONE_LIGHT)
 
 		var res := load(IMPORT_DIR + names[i])
 		var holder := Node3D.new()
 		holder.position = base + Vector3(0.0, 0.3, 0.0)
 		add_child(holder)
+
+		var note := ""
 		if res is PackedScene:
-			holder.add_child((res as PackedScene).instantiate())
+			var inst: Node = (res as PackedScene).instantiate()
+			holder.add_child(inst)
+			note = _autoplay(inst)
 		elif res is Mesh:
 			var mi := MeshInstance3D.new()
 			mi.mesh = res
 			holder.add_child(mi)
+			note = "mesh only, no rig"
 		else:
 			push_warning("greenhorn: could not mount %s" % names[i])
+			note = "failed to load"
+
+		# Label goes above whatever actually arrived, not at a guessed height.
+		# A 1.7 m character on a 0.3 m plinth put its head exactly where a
+		# fixed 2 m label was, and wore the caption like a hat.
+		var top: float = maxf(_visual_top(holder), holder.global_position.y + 0.4)
+		_label(names[i], Vector3(px, top + 0.42, PLINTH_Z), 32, Palette.STONE_LIGHT)
+		_label(note, Vector3(px, top + 0.16, PLINTH_Z), 24, Palette.ACCENT)
 
 	# a 1 m cube beside the row, so a scale mistake is obvious at a glance
 	var refx := float(names.size()) * 1.9 + 1.8
 	_box(Vector3.ONE, Transform3D(Basis(), Vector3(refx, 0.5, PLINTH_Z)),
 		Palette.solid(Palette.STONE_LIGHT, 0.9))
 	_label("1 m", Vector3(refx, 1.4, PLINTH_Z), 32)
+
+
+## Highest point of anything visible under a node, in world space. Used to
+## park a caption clear of the model rather than through it.
+func _visual_top(n: Node) -> float:
+	var best := -INF
+	for c in n.find_children("*", "VisualInstance3D", true, false):
+		var vi := c as VisualInstance3D
+		var ab := vi.get_aabb()
+		var xf := vi.global_transform
+		for i in 8:
+			best = maxf(best, (xf * ab.get_endpoint(i)).y)
+	return best
+
+
+func _find_player(n: Node) -> AnimationPlayer:
+	if n is AnimationPlayer:
+		return n as AnimationPlayer
+	for c in n.get_children():
+		var f := _find_player(c)
+		if f:
+			return f
+	return null
+
+
+## Loop something on a mounted model so you can see it move, and report what
+## came through. If a caption says "no animations" the export is the problem,
+## not the engine.
+func _autoplay(inst: Node) -> String:
+	var ap := _find_player(inst)
+	if ap == null:
+		return "no AnimationPlayer"
+	var list := ap.get_animation_list()
+	if list.is_empty():
+		return "no animations"
+	var pick := ""
+	for want in ["walk", "idle", "run"]:
+		pick = AnimPick.find(ap, want)
+		if pick != "":
+			break
+	if pick == "":
+		pick = list[0]
+	AnimPick.loop(ap, pick)
+	ap.play(pick)
+	return "%d anim: %s" % [list.size(), ", ".join(list)]

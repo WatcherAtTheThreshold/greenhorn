@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dilhj3twy8ox6"
-path="res://.godot/imported/rigged_worm.blend-6ed9236c7487040c3f83e80f568292a0.scn"
+uid="uid://bi1htx3kn84rl"
+path="res://.godot/imported/walk-man2.blend-1f4db412a843b266118d901371284ca7.scn"
 
 [deps]
 
-source_file="res://assets/blender/rigged_worm.blend"
-dest_files=["res://.godot/imported/rigged_worm.blend-6ed9236c7487040c3f83e80f568292a0.scn"]
+source_file="res://assets/blender/walk-man2.blend"
+dest_files=["res://.godot/imported/walk-man2.blend-1f4db412a843b266118d901371284ca7.scn"]
 
 [params]
 
