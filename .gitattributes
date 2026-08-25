@@ -1,0 +1,11 @@
+# Godot text resources — keep diffs readable, never CRLF-mangled
+*.tscn  text eol=lf
+*.tres  text eol=lf
+*.gd    text eol=lf
+*.godot text eol=lf
+*.import text eol=lf
+
+# Binary
+*.blend binary
+*.png   binary
+*.glb   binary

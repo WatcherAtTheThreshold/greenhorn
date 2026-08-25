@@ -1,0 +1,15 @@
+# Godot 4 — imported asset cache, editor state (regenerated automatically)
+.godot/
+
+# Godot exports
+exports/
+*.pck
+/android/
+
+# Blender backups
+*.blend1
+*.blend2
+
+# OS junk
+Thumbs.db
+.DS_Store
