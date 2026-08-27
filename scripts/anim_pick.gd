@@ -31,8 +31,14 @@ static func find(ap: AnimationPlayer, want: String) -> String:
 ## Make an animation loop. Imported clips default to no looping, so a walk
 ## cycle plays once and freezes on the last frame.
 static func loop(ap: AnimationPlayer, name: String) -> void:
+	set_loop(ap, name, true)
+
+
+## Explicit loop control. Cycles loop; one-shots like a jump or a landing must
+## not, or the character bounces on the spot for as long as it is in the air.
+static func set_loop(ap: AnimationPlayer, name: String, on: bool) -> void:
 	if ap == null or name == "":
 		return
 	var a := ap.get_animation(name)
 	if a:
-		a.loop_mode = Animation.LOOP_LINEAR
+		a.loop_mode = Animation.LOOP_LINEAR if on else Animation.LOOP_NONE

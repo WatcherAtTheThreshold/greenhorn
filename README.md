@@ -37,8 +37,11 @@ usually there is nothing else to do. To pin it to one file, set
 **Character File** on the root of `scenes/player.tscn` (e.g. `cat.blend`).
 
 Animations get driven automatically if their names *start with* `idle`,
-`walk` or `run` — so `walk_002` and `Armature|Walk` both work. The plinth
-caption tells you what actually arrived.
+`walk`, `run`, `jump`, `fall` or `land` — case-insensitive, so `walk_002` and
+`Armature|Walk` both work. Only the first three are needed; the rest are
+optional and degrade gracefully. Plinth models play their `idle` (a walk
+cycle on a display stand reads as a treadmill). The plinth caption tells you
+what actually arrived.
 
 ### Swapping models
 

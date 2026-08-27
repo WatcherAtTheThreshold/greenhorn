@@ -63,7 +63,12 @@ var _anim: AnimationPlayer = null
 var _clip_idle := ""
 var _clip_walk := ""
 var _clip_run := ""
+var _clip_jump := ""
+var _clip_fall := ""
+var _clip_land := ""
 var _idle_held := false
+var _airborne := false
+var _land_left := 0.0
 
 
 func _ready() -> void:
@@ -97,13 +102,19 @@ func _ready() -> void:
 		_clip_idle = AnimPick.find(_anim, "idle")
 		_clip_walk = AnimPick.find(_anim, "walk")
 		_clip_run  = AnimPick.find(_anim, "run")
+		_clip_jump = AnimPick.find(_anim, "jump")
+		_clip_fall = AnimPick.find(_anim, "fall")
+		_clip_land = AnimPick.find(_anim, "land")
 		# no walk but a run? use it for both rather than standing frozen
 		if _clip_walk == "":
 			_clip_walk = _clip_run
 		if _clip_run == "":
 			_clip_run = _clip_walk
-		for clip in [_clip_idle, _clip_walk, _clip_run]:
+		for clip in [_clip_idle, _clip_walk, _clip_run, _clip_fall]:
 			AnimPick.loop(_anim, clip)
+		# a jump or a landing that loops bounces on the spot
+		for once in [_clip_jump, _clip_land]:
+			AnimPick.set_loop(_anim, once, false)
 
 
 const MODEL_DIR := "res://assets/blender/"
@@ -182,7 +193,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 	_move(delta)
 	_update_camera(delta)
-	_animate()
+	_animate(delta)
 
 
 func _move(delta: float) -> void:
@@ -269,15 +280,49 @@ func _update_camera(delta: float) -> void:
 ## If the model you dropped in has animations called idle / walk / run, they
 ## get driven here. Names that do not exist are simply skipped, so a model
 ## with no AnimationPlayer costs nothing.
-func _animate() -> void:
+## Ground poses, plus an air state. Everything degrades: a model with only
+## an idle still works, a model with jump but no fall holds the jump, and one
+## with no air clips at all just keeps using the ground poses mid-air.
+const LAND_HOLD := 0.22   ## seconds the landing clip is protected for
+
+func _animate(delta: float) -> void:
 	if _anim == null:
 		return
+	var grounded := is_on_floor()
+
+	# --- touchdown. Hold the landing briefly or the walk that follows stamps
+	# on it the very next frame and you never see it.
+	if grounded and _airborne:
+		_airborne = false
+		if _clip_land != "":
+			_land_left = LAND_HOLD
+			_play(_clip_land)
+			return
+	_airborne = not grounded
+
+	if _land_left > 0.0:
+		_land_left -= delta
+		if _land_left > 0.0:
+			return
+
+	# --- in the air
+	if not grounded:
+		var air := _clip_jump
+		if velocity.y < 0.0 and _clip_fall != "":
+			air = _clip_fall
+		if air != "":
+			_play(air)
+			return
+		# nothing airborne to play: fall through and keep the ground pose
+
+	# --- on the ground
 	var planar := Vector3(velocity.x, 0.0, velocity.z).length()
 	var want := _clip_idle
 	if planar > RUN_SPEED * 0.7:
 		want = _clip_run
 	elif planar > 0.35:
 		want = _clip_walk
+
 	if want == "":
 		# No idle clip in this model. Holding the first frame of the walk
 		# reads far better than the rest pose, which for a rigged character
@@ -293,8 +338,12 @@ func _animate() -> void:
 			_anim.speed_scale = 0.0
 			_idle_held = true
 		return
+	_play(want)
+
+
+func _play(clip: String) -> void:
 	if _idle_held:
 		_anim.speed_scale = 1.0
 		_idle_held = false
-	if _anim.current_animation != want:
-		_anim.play(want)
+	if _anim.current_animation != clip:
+		_anim.play(clip)

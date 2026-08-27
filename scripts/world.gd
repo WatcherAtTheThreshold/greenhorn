@@ -418,8 +418,10 @@ func _autoplay(inst: Node) -> String:
 	var list := ap.get_animation_list()
 	if list.is_empty():
 		return "no animations"
+	# Idle first. A plinth is a display stand, and a walk cycle running on
+	# the spot reads as a treadmill; an idle reads as "here is the character".
 	var pick := ""
-	for want in ["walk", "idle", "run"]:
+	for want in ["idle", "walk", "run"]:
 		pick = AnimPick.find(ap, want)
 		if pick != "":
 			break

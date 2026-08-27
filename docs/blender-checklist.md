@@ -38,9 +38,24 @@ animation that also moves gives you moonwalking, or double speed.
 To get more than the active action out, push each one down as an **NLA
 strip**, or tick *export all actions* on the importer.
 
-If you name them `idle`, `walk` and `run`, `player.gd` will drive them
-automatically — see `_animate()`. Anything it cannot find is skipped, so a
-model with no animations costs nothing.
+The project drives these names automatically, matching on **prefix** and
+ignoring case — so `Walk_002` and `Armature|walk` both count as `walk`:
+
+| name | when it plays | loops |
+|---|---|---|
+| `idle` | standing still | yes |
+| `walk` | moving | yes |
+| `run` | moving above ~70% of RUN_SPEED | yes |
+| `jump` | feet off the ground | no |
+| `fall` | *optional* — airborne and descending | yes |
+| `land` | *optional* — the moment you touch down | no |
+
+Everything degrades. No `fall` and the jump pose holds; no `land` and you go
+straight back to idle; no air clips at all and the ground poses keep running
+mid-air. A model with no animations at all costs nothing.
+
+Where several clips match a prefix, the **longest** wins — which reliably
+skips the one-frame strays left over from experimenting.
 
 ## 5. Procedural materials do not export.
 
