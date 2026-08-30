@@ -76,6 +76,13 @@ Bands running away from where you spawn:
 See [docs/blender-checklist.md](docs/blender-checklist.md) for the five things
 that go wrong on the way out of Blender.
 
+## Green Horn
+
+The sandbox is feeding a game. Planning lives in `docs/`:
+
+- [green-horn-outline.md](docs/green-horn-outline.md) — premise, budgets, milestone ladder
+- [m2-first-fight.md](docs/m2-first-fight.md) — **the current stage**: one bug, one hit, one shell
+
 ## Where things live
 
 ```

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://1jwokjbdtn8"
-path="res://.godot/imported/face1.blend-40d3f36fac1750156f6ca882932393f2.scn"
+uid="uid://8h4xufgy7e5a"
+path="res://.godot/imported/skeleton-8-28-26.blend-ac0656ff7f4cd24916f2305c2794e7d1.scn"
 
 [deps]
 
-source_file="res://assets/blender/face1.blend"
-dest_files=["res://.godot/imported/face1.blend-40d3f36fac1750156f6ca882932393f2.scn"]
+source_file="res://assets/blender/alt-blend-files/skeleton-8-28-26.blend"
+dest_files=["res://.godot/imported/skeleton-8-28-26.blend-ac0656ff7f4cd24916f2305c2794e7d1.scn"]
 
 [params]
 
