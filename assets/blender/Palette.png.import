@@ -2,20 +2,17 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b7mcd7pbrbj1k"
-path.s3tc="res://.godot/imported/Tim_Palette.png-6f553ab78b9ce5ee268d04c81a809ef2.s3tc.ctex"
+uid="uid://cfulcc64plxb6"
+path.s3tc="res://.godot/imported/Palette.png-d43b10b9c206f27593ee954a3a617ba6.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
-generator_parameters={
-"md5": "d421e320074f2c1c6ddfa19342e7eb39"
-}
 
 [deps]
 
-source_file="res://assets/blender/Tim_Palette.png"
-dest_files=["res://.godot/imported/Tim_Palette.png-6f553ab78b9ce5ee268d04c81a809ef2.s3tc.ctex"]
+source_file="res://assets/blender/Palette.png"
+dest_files=["res://.godot/imported/Palette.png-d43b10b9c206f27593ee954a3a617ba6.s3tc.ctex"]
 
 [params]
 

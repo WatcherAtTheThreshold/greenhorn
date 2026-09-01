@@ -24,13 +24,39 @@ const TURN_RATE       := 12.0     ## how fast the body swings to face travel
 const STEP_HEIGHT     := 0.45
 
 # --- camera -----------------------------------------------------------------
-const CAM_DISTANCE    := 4.5      ## metres behind the head in third person
+const CAM_DISTANCE    := 2.25     ## metres behind the head in third person
 const CAM_HEIGHT      := 1.55     ## pivot height — roughly eye level
 const CAM_MIN_PITCH   := -1.25    ## radians (looking up)
 const CAM_MAX_PITCH   := 1.05     ## radians (looking down)
 const CAM_SENS        := 0.0025   ## radians per pixel of mouse movement
 const CAM_LAG         := 12.0     ## how quickly the arm settles; higher = tighter
 const CAM_PUSH_MARGIN := 0.25     ## keep the camera this far off any wall it hits
+
+## Parts to hide when the camera is inside the character's head — first person,
+## and also when a wall shoves the arm all the way in.
+##
+## Hiding the head rather than the whole body is only possible because Tim is
+## 27 separately named objects instead of one skinned mesh. It means first
+## person keeps your own arms, torso and the sword swinging in front of you,
+## with no second model and no second set of animations. Names that are not in
+## the model are simply skipped, so this costs nothing on other characters.
+const HEAD_PARTS: Array[String] = ["head", "eye1", "eye2", "mouth"]
+
+# --- sockets ----------------------------------------------------------------
+## The bone a held weapon rides. Add it in Blender parented to the hand bone
+## with **Deform unticked**, so it skins nothing and makes no vertex group.
+## Aim the bone at the weapon rather than moving the weapon to the bone: the
+## weapon is modelled at the origin pointing the way it should point when
+## held, and the socket rotates to meet it.
+const WEAPON_BONE := "weapon.socket.R"
+
+# --- attacks ----------------------------------------------------------------
+## A swing is held for the length of its own clip, so retiming the chop in
+## Blender retimes the commitment in game and there is no number here to keep
+## in sync. This is the fraction of the swing you are locked into before the
+## next one may start: 1.0 means you must watch every recovery frame, lower
+## lets a second click cut them short and feels prompter in the hand.
+const ATTACK_CANCEL := 0.75
 
 ## Which model to wear. Three ways, in priority order:
 ##   1. character_scene, if you set it in the inspector
@@ -47,6 +73,10 @@ const CAM_PUSH_MARGIN := 0.25     ## keep the camera this far off any wall it hi
 ## Leave blank to wear the first rigged model found. Set e.g. "cat.blend" to
 ## pin it to one file.
 @export var character_file := ""
+## Which weapon to hold. Blank means empty-handed. The weapon is never skinned
+## and never rigged — it hangs off WEAPON_BONE, so changing this one string
+## swaps the weapon with no re-export and no scene edit.
+@export var weapon_file := "sword1.blend"
 
 var _yaw := 0.0
 var _pitch := -0.15
@@ -66,9 +96,15 @@ var _clip_run := ""
 var _clip_jump := ""
 var _clip_fall := ""
 var _clip_land := ""
+var _clip_thrust := ""
+var _clip_chop := ""
+var _attack := ""          ## clip currently swinging, "" when not attacking
+var _attack_left := 0.0    ## seconds of it still to play
+var _attack_len := 0.0     ## its full length, for the cancel window
 var _idle_held := false
 var _airborne := false
 var _land_left := 0.0
+var _head_parts: Array[Node3D] = []
 
 
 func _ready() -> void:
@@ -105,6 +141,17 @@ func _ready() -> void:
 		_clip_jump = AnimPick.find(_anim, "jump")
 		_clip_fall = AnimPick.find(_anim, "fall")
 		_clip_land = AnimPick.find(_anim, "land")
+		# Ask for the full names, not "attack". Both swings share that prefix,
+		# so a prefix search would match either and hand back whichever clip
+		# happens to be longer — the two buttons would do the same thing.
+		_clip_thrust = AnimPick.find(_anim, "attack.thrust")
+		_clip_chop   = AnimPick.find(_anim, "attack.chop")
+		# A swing that resolves to "" is silent — the button does nothing at
+		# all and there is nothing on screen to tell you why. Say so, and say
+		# what the model actually brought, which is usually the whole answer.
+		if _clip_thrust == "" or _clip_chop == "":
+			push_warning("greenhorn: thrust=%s chop=%s. Clips in this model: %s"
+				% [_clip_thrust, _clip_chop, ", ".join(_anim.get_animation_list())])
 		# no walk but a run? use it for both rather than standing frozen
 		if _clip_walk == "":
 			_clip_walk = _clip_run
@@ -112,9 +159,15 @@ func _ready() -> void:
 			_clip_run = _clip_walk
 		for clip in [_clip_idle, _clip_walk, _clip_run, _clip_fall]:
 			AnimPick.loop(_anim, clip)
-		# a jump or a landing that loops bounces on the spot
-		for once in [_clip_jump, _clip_land]:
+		# a jump, a landing or a swing that loops repeats on the spot
+		for once in [_clip_jump, _clip_land, _clip_thrust, _clip_chop]:
 			AnimPick.set_loop(_anim, once, false)
+
+	for part in HEAD_PARTS:
+		for c in body.find_children(part, "VisualInstance3D", true, false):
+			_head_parts.append(c as Node3D)
+
+	_equip(weapon_file, WEAPON_BONE)
 
 
 const MODEL_DIR := "res://assets/blender/"
@@ -155,6 +208,72 @@ func _adopt_model() -> void:
 		return
 
 
+## Hang a BoneAttachment3D off a named bone and return it, or null.
+##
+## This is code rather than a node dragged into player.tscn because the model
+## is not in the scene file at all — _adopt_model() loads it at runtime, so
+## there is no Skeleton3D to parent anything to until the game is running.
+## Same reason the world is built in code: nothing to re-wire when the asset
+## changes.
+func _socket(bone: String) -> BoneAttachment3D:
+	var skels := body.find_children("*", "Skeleton3D", true, false)
+	if skels.is_empty():
+		push_warning("greenhorn: no Skeleton3D, so no socket '%s'" % bone)
+		return null
+	var skel := skels[0] as Skeleton3D
+
+	if skel.find_bone(bone) == -1:
+		# Say what IS there. A missing socket bone is nearly always the glTF
+		# exporter's Armature > Export Deformation Bones Only, which drops
+		# every non-deform bone silently — and a socket bone is non-deform by
+		# definition, so that tick removes exactly the bones you added.
+		var have: Array[String] = []
+		for i in skel.get_bone_count():
+			have.append(skel.get_bone_name(i))
+		push_warning(("greenhorn: bone '%s' is not in the rig. " % bone)
+			+ "If your sockets are missing but the limbs are here, untick "
+			+ "Armature > Export Deformation Bones Only and re-export.\n"
+			+ "Skeleton has %d bones: %s" % [have.size(), ", ".join(have)])
+		return null
+
+	# An unapplied Object Mode scale on the Blender armature rides all the way
+	# through to here. The character still looks right, because its meshes are
+	# children of that armature and were shrunk by the same amount — but a
+	# socketed prop is NOT, so it arrives at true size and is then scaled down
+	# with everything else, which reads as "the sword is too small".
+	#
+	# Report it, do not correct it. A silent counter-scale here would make the
+	# weapon wrong again the moment the .blend is fixed properly.
+	var s := skel.global_transform.basis.get_scale()
+	if not s.is_equal_approx(Vector3.ONE):
+		push_warning(("greenhorn: the skeleton carries a scale of %v, so "
+			+ "anything on '%s' renders at that fraction of its true size. "
+			+ "Fix it in Blender with Ctrl+A > All Transforms on the armature "
+			+ "and its meshes, rather than by resizing the weapon.")
+			% [s, bone])
+
+	var at := BoneAttachment3D.new()
+	at.name = "socket_" + bone.replace(".", "_")  # dots are illegal in node names
+	skel.add_child(at)     # must be parented before bone_name can resolve
+	at.bone_name = bone
+	return at
+
+
+## Put a model in a socket. No rig, no skinning — it inherits the bone's
+## transform every frame, which is the whole trick.
+func _equip(file: String, bone: String) -> void:
+	if file == "":
+		return
+	var res := load(MODEL_DIR + file)
+	if not (res is PackedScene):
+		push_warning("greenhorn: %s is not a scene, cannot equip it" % file)
+		return
+	var at := _socket(bone)
+	if at == null:
+		return
+	at.add_child((res as PackedScene).instantiate())
+
+
 func _find_anim(n: Node) -> AnimationPlayer:
 	if n is AnimationPlayer:
 		return n
@@ -170,6 +289,26 @@ func _find_anim(n: Node) -> AnimationPlayer:
 	return null
 
 
+## Start a swing. Silently does nothing if the model has no such clip, so a
+## rig with only a thrust still works on left click and right click is simply
+## inert rather than an error.
+func _swing(clip: String) -> void:
+	if _anim == null or clip == "":
+		return
+	var a := _anim.get_animation(clip)
+	if a == null:
+		return
+	# Committed until the recovery frames. Without this a held or mashed
+	# button restarts the wind-up every frame and the sword never leaves the
+	# start of the swing.
+	if _attack != "" and _attack_left > _attack_len * (1.0 - ATTACK_CANCEL):
+		return
+	_attack = clip
+	_attack_len = a.length
+	_attack_left = a.length
+	_play(clip, true)
+
+
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_yaw -= e.relative.x * CAM_SENS
@@ -183,7 +322,13 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e.is_action_pressed("respawn"):
 		global_position = _spawn
 		velocity = Vector3.ZERO
+	elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and e.is_action_pressed("attack_thrust"):
+		_swing(_clip_thrust)
+	elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and e.is_action_pressed("attack_chop"):
+		_swing(_clip_chop)
 	elif e is InputEventMouseButton and Input.mouse_mode == Input.MOUSE_MODE_VISIBLE:
+		# The click that grabs the mouse back must not also swing the sword,
+		# which is why both branches above check for a captured mouse first.
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -274,7 +419,21 @@ func _update_camera(delta: float) -> void:
 		_arm = lerp(_arm, want, 1.0 - pow(0.5, delta * CAM_LAG))
 
 	camera.position = Vector3(0.0, 0.0, _arm)
-	body.visible = not _first_person or _arm > 0.5
+	_set_inside_view(_arm <= 0.5)
+
+
+## Hide as little as the model allows. If we found a head, hide only that and
+## you keep your body and your weapon in view from inside. If we did not — the
+## placeholder capsule, or a character whose parts are named differently, or
+## one skinned mesh that cannot be split at all — fall back to hiding
+## everything, which is what this used to do unconditionally.
+func _set_inside_view(inside: bool) -> void:
+	if _head_parts.is_empty():
+		body.visible = not inside
+		return
+	body.visible = true
+	for p in _head_parts:
+		p.visible = not inside
 
 
 ## If the model you dropped in has animations called idle / walk / run, they
@@ -294,7 +453,7 @@ func _animate(delta: float) -> void:
 	# on it the very next frame and you never see it.
 	if grounded and _airborne:
 		_airborne = false
-		if _clip_land != "":
+		if _attack == "" and _clip_land != "":
 			_land_left = LAND_HOLD
 			_play(_clip_land)
 			return
@@ -304,6 +463,16 @@ func _animate(delta: float) -> void:
 		_land_left -= delta
 		if _land_left > 0.0:
 			return
+
+	# --- mid-swing. Outranks walking and outranks the air poses, because the
+	# locomotion below would otherwise stamp on the attack the frame after it
+	# starts and you would never see the swing at all. Same reason the landing
+	# clip is held above.
+	if _attack != "":
+		_attack_left -= delta
+		if _attack_left > 0.0:
+			return
+		_attack = ""
 
 	# --- in the air
 	if not grounded:
@@ -341,9 +510,15 @@ func _animate(delta: float) -> void:
 	_play(want)
 
 
-func _play(clip: String) -> void:
+## restart forces the clip back to frame 0 even if it is already the current
+## one. Swinging twice in a row needs that; without it the second thrust is
+## swallowed because the AnimationPlayer is already playing "attack.thrust".
+func _play(clip: String, restart := false) -> void:
 	if _idle_held:
 		_anim.speed_scale = 1.0
 		_idle_held = false
-	if _anim.current_animation != clip:
+	if restart:
+		_anim.play(clip)
+		_anim.seek(0.0, true)
+	elif _anim.current_animation != clip:
 		_anim.play(clip)

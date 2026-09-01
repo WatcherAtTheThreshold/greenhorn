@@ -29,12 +29,20 @@ sandbox already has:
 | Animation | idle / walk / run / jump, optional fall / land |
 | Model loading | drop a `.blend` in `assets/blender/`, it appears |
 | Diagnostics | plinth captions report clips, rigs, mesh and vert counts |
+| Sockets | `_socket()` / `_equip()`, sword rides `weapon.socket.R` |
+| Attacks | `attack.thrust` on left click, `attack.chop` on right |
 
 Not built yet, and needed for M2:
 
-- Socket / `BoneAttachment3D` system (weapons in hands, shells on bugs)
 - Any enemy at all
 - Damage, hit detection, hit feedback
+
+**Outstanding, and it will come back:** Tim's armature still exports carrying
+`scale 0.2106`. The sword was scaled up in Blender to compensate rather than
+the armature being applied, which works but hides the problem — every one of
+the seven remaining sockets on Tim will need the same invisible 4.75× fudge.
+Worth applying properly before augments start bolting on. See
+[the four that actually cost time](#the-four-that-actually-cost-time).
 
 ---
 
@@ -189,6 +197,22 @@ the one-frame strays left over from experimenting.
 
 Everything degrades. A model with only an idle still works.
 
+**Godot deletes dots from animation names.** The glTF importer runs every clip
+name through `validate_node_name()`, which strips the characters that are
+illegal in node names — `.` among them. So a Blender action called
+`attack.thrust` arrives in the `AnimationPlayer` as `attackthrust`.
+
+This is a nasty one because it fails *selectively*: `idle` and `walk` have no
+punctuation to lose and work perfectly, so the rig looks fine and only the
+dotted clips are silently unfindable. It cost an evening of staring at a sword
+that sat in Tim's hand doing nothing on every click.
+
+`AnimPick` now compares names with everything but letters and digits stripped,
+so `attack.thrust`, `attack_thrust`, `attack-thrust` and `attackThrust` all
+match the same clip. **Keep using dots in Blender** — the naming is good and
+the lookup no longer cares. And `player.gd` now warns on startup with the full
+clip list if a swing resolves to nothing.
+
 ---
 
 ## Sockets and attachments
@@ -213,17 +237,88 @@ On the bug: `shell.socket` on the thorax.
 
 ### Blender side
 
-1. In Edit Mode on the armature, add a bone, parent it to the hand bone.
-2. **Untick Deform.** It should not create a vertex group or skin anything.
-3. Position it where the grip sits; rotate it so the weapon's local axes line
-   up with how it should be held.
-4. Export the robot as one `.glb`. Export each weapon as its own `.glb`.
+**There is no socket object in Blender.** Nothing in the menus is called a
+socket or an attachment point, and looking for one is the first half-hour
+gone. A socket is just a bone that deforms nothing. That is the entire idea.
+
+In Edit Mode on the armature:
+
+1. Select the hand bone, `Shift+S` → **Cursor to Selected**. The 3D cursor is
+   now at the bone's head.
+2. `Shift+A` for a new bone at the cursor. Do **not** extrude with `E` — that
+   makes a *connected* child you then cannot move freely.
+3. Rename it `weapon.socket.R` in Bone properties.
+4. Bone properties → **Relations** → Parent: the hand bone, **Connected: off**.
+5. Bone properties → **Deform: untick.** This is the step that makes it a
+   socket rather than a limb: no vertex group, nothing skinned to it.
+6. Shrink it to ~0.1 m so it is not a metre-long spike in the viewport. Length
+   is cosmetic — only the head position and the rotation matter.
+
+Repeat for every name in the list above while the armature is open.
 
 ### Godot side
 
-1. `BoneAttachment3D` under the `Skeleton3D`, set `bone_name`.
-2. Add the weapon mesh as its child.
-3. Swap the child at runtime to swap weapons — no re-export.
+`BoneAttachment3D` under the `Skeleton3D`, with the weapon as its child — but
+**not by dragging nodes in the editor**, because there are no nodes to drag.
+The player model is not in `player.tscn` at all; `_adopt_model()` loads it at
+runtime, so there is no `Skeleton3D` to parent anything to until the game is
+running.
+
+So it is code, in `scripts/player.gd`:
+
+| | |
+|---|---|
+| `_socket(bone)` | makes the `BoneAttachment3D` on whatever rig arrived |
+| `_equip(file, bone)` | loads a `.blend` and hangs it there |
+| `WEAPON_BONE` | the bone name it looks for |
+| `weapon_file` | which `.blend` to hold — change it, swap weapons |
+
+Swapping weapons is one string. No re-export, no scene edit.
+
+### The four that actually cost time
+
+**1. The attachment lands on the bone's head, +Y toward the tail.**
+The child sits at the head — the root end, not the tip — and inherits the
+bone's axes, where **+Y runs head to tail**. Blender bones point +Y along
+their length, so a weapon modelled pointing Godot-forward (`-Z`) arrives
+rotated 90°. Do not try to compute the correction. Model the weapon at the
+origin pointing as it should when held, then rotate the *bone* to meet it:
+`R` to aim, `Ctrl+R` or the N-panel **Roll** field for the spin around the
+blade. Two or three export passes gets it.
+
+To skip the guessing: run the game, find the socket in the editor's **Remote**
+scene tree, nudge its child's rotation in the inspector until it looks right,
+then apply those numbers to the bone in Blender and zero the child again. The
+bone stays the single source of truth, which is what keeps weapon swapping
+free.
+
+**2. An unapplied armature scale makes every socketed prop tiny.**
+This one cost the most. Tim's armature exported carrying
+`"scale":[0.2106, 0.2106, 0.2106]` from an Object Mode resize that was never
+applied. Tim himself looked perfect — his meshes are children of that armature
+and were shrunk by the same amount. But a socketed prop is **not** a child of
+the armature. It arrives at true size and is then scaled by 0.21, so a 1.7 m
+sword renders at 36 cm and looks like a letter opener.
+
+The fix is `Ctrl+A` → **All Transforms** in Object Mode, with the armature
+**and its meshes selected together**. Applying to the armature alone pushes a
+compensating scale onto the children and you end up where you started.
+
+Two warnings. Save a copy first: applying scale to an armature that already
+has actions can shift bone *location* channels, so play every clip afterwards.
+And `_socket()` now reports this on startup — if a skeleton arrives carrying a
+scale, it names the number rather than letting you wonder why the sword is
+small.
+
+**3. Apply the weapon's transforms too.**
+`sword1.blend` had a 90° rotation and a non-uniform scale sitting on every one
+of its nine parts. Until those are applied, "modelled at the origin pointing
+the right way" is not actually true of the file, and aiming the socket bone
+against it is guesswork. Risk-free to apply — no rig, no actions.
+
+**4. Godot deletes dots from animation names.**
+Not strictly a socket problem, but it is what made the finished sword sit in
+Tim's hand doing nothing. See [the naming note](#naming--what-the-project-understands).
 
 ### The shell, specifically
 

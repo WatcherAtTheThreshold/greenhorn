@@ -385,12 +385,18 @@ func _mount_imports() -> void:
 	_label("1 m", Vector3(refx, 1.4, PLINTH_Z), 32)
 
 
-## Highest point of anything visible under a node, in world space. Used to
-## park a caption clear of the model rather than through it.
+## Highest point of any geometry under a node, in world space. Used to park a
+## caption clear of the model rather than through it.
+##
+## Meshes only, deliberately. A Light3D is a VisualInstance3D too, and its
+## AABB is its whole range — kilometres wide for an imported glTF point light,
+## which has no range at all in the spec. Leave Blender's default light in a
+## .blend and its captions get flung into the sky, which reads on screen as
+## the model simply having no captions.
 func _visual_top(n: Node) -> float:
 	var best := -INF
-	for c in n.find_children("*", "VisualInstance3D", true, false):
-		var vi := c as VisualInstance3D
+	for c in n.find_children("*", "MeshInstance3D", true, false):
+		var vi := c as MeshInstance3D
 		var ab := vi.get_aabb()
 		var xf := vi.global_transform
 		for i in 8:
