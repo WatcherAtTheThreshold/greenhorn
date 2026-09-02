@@ -18,10 +18,60 @@ const GRAVITY         := 18.0     ## m/s^2 — heavier than real, feels better
 const TURN_RATE       := 12.0     ## how fast the body swings to face travel
 
 # --- stepping ---------------------------------------------------------------
-## How tall a ledge the character will walk up without jumping. This is THE
-## number that decides whether stairs work. Godot's CharacterBody3D will not
-## climb a vertical riser on its own, so we do it manually below.
-const STEP_HEIGHT     := 0.45
+## How tall a ledge the character will walk up without jumping. Godot's
+## CharacterBody3D will not climb a vertical riser on its own, so we do it
+## manually below.
+##
+## This is the line between *incidental* elevation and *deliberate* elevation,
+## and it wants to sit low. Curbs, thresholds, the lip where a ramp meets the
+## ground, the edge of a rock — those must not stop you dead, or the game
+## feels broken in a way that is very hard to point at. Anything someone
+## placed on purpose to be climbed reads better jumped.
+##
+## At 0.28: the 15 and 25 cm stair bands walk, the 40 cm band and the 0.3 m
+## plinths need a jump.
+const STEP_HEIGHT     := 0.28
+## How fast the view catches up after a step-up. The collision body has to go
+## up — physics needs it there — but the camera and the model do not have to
+## follow in the same frame, and them doing so is what reads as a jerk. Both
+## get held back and eased in. Higher is tighter; 0 would leave them behind
+## permanently.
+const STEP_SMOOTH     := 14.0
+## How far ahead to look when hunting for a tread. Must exceed the collision
+## capsule's radius (0.35), or the probe never gets the body's axis past the
+## riser and finds the floor you are already standing on instead of the step.
+##
+## One frame of walking is about 5 cm, which is nowhere near enough — using
+## that made shallow stairs climbable only at a run, because running happened
+## to double the reach.
+const STEP_PROBE      := 0.45
+## How far ahead counts as "in the way". Fixed, never one frame of movement:
+## at low speed a frame is smaller than the physics margin and the collision
+## test stops giving a stable answer.
+const STEP_CONTACT    := 0.08
+## How fast the body is allowed to climb, in metres per second. THE knob for
+## how a staircase feels.
+##
+## Without this the body covers the whole riser in one frame, so a 40 cm step
+## is nearly three times the jolt of a 15 cm one — which is exactly why the
+## jerk got worse as the stairs got taller. Capping the rate makes every step
+## climb at the same speed regardless of its height; a tall one simply takes
+## more frames.
+##
+## It has a floor, though. To keep up with a staircase you must climb at least
+## `riser / tread * speed`. The steepest band STEP_HEIGHT still allows is 25 cm
+## over a 42 cm tread, so running it needs about 3.6 m/s of climb — go below
+## that and you stall partway up instead of jerking up. There is plenty of
+## headroom here, and it still spreads a 25 cm riser over two frames.
+const STEP_RATE       := 7.0
+## How long a step-up may take before we give up on it. Once one starts the
+## body commits: no gravity, no floor snapping, until it is over the edge or
+## this runs out. Without the commit the lift is undone the same frame it
+## happens and you buzz against the step instead of climbing it.
+const STEP_COMMIT     := 0.3
+## Normal floor snapping, restored the moment a step finishes. Keeps us glued
+## going DOWN stairs and ramps.
+const FLOOR_SNAP      := 0.6
 
 # --- camera -----------------------------------------------------------------
 const CAM_DISTANCE    := 2.25     ## metres behind the head in third person
@@ -58,6 +108,26 @@ const WEAPON_BONE := "weapon.socket.R"
 ## lets a second click cut them short and feels prompter in the hand.
 const ATTACK_CANCEL := 0.75
 
+# --- hitting ----------------------------------------------------------------
+## When in the swing the blade is live, as a fraction of the clip. Only the
+## motion should connect, not the poses held at either end, or the sword reads
+## as damaging things by resting against them.
+##
+## These two are a guess. The importer samples every frame, so the export
+## cannot tell me where in your clip the fast part actually is — deliberately
+## wide, so it fails by connecting too easily rather than by looking broken.
+## Watch where the hit lands and narrow it.
+const HIT_FROM   := 0.1
+const HIT_TO     := 0.7
+const HIT_DAMAGE := 1
+
+## Hitstop: both parties nearly freeze for a moment on impact. This is the
+## cheapest trick in the book and it does more for weight than any animation —
+## the swing appears to meet resistance rather than pass through. Not quite
+## zero, because a dead-stopped frame reads as a stutter rather than a hit.
+const HITSTOP_TIME  := 0.06
+const HITSTOP_SCALE := 0.05
+
 ## Which model to wear. Three ways, in priority order:
 ##   1. character_scene, if you set it in the inspector
 ##   2. anything already dragged into Body in the editor
@@ -82,6 +152,9 @@ var _yaw := 0.0
 var _pitch := -0.15
 var _arm := CAM_DISTANCE
 var _first_person := false
+## Body faces the camera instead of its direction of travel — Roblox shift-lock
+## rather than an over-the-shoulder framing. The camera itself does not move.
+var _cam_lock := false
 var _spawn := Vector3.ZERO
 
 @onready var body: Node3D = $Body
@@ -105,12 +178,17 @@ var _idle_held := false
 var _airborne := false
 var _land_left := 0.0
 var _head_parts: Array[Node3D] = []
+var _step_offset := 0.0     ## how far the view is still behind after a step
+var _stepping := 0.0        ## seconds left of a committed step-up
+var _blade: Area3D = null
+var _struck: Array[Node] = []   ## already hit by THIS swing, so each lands once
+var _stopping := false          ## a hitstop is already running
 
 
 func _ready() -> void:
 	_spawn = global_position
 	pivot.position.y = CAM_HEIGHT
-	floor_snap_length = 0.6          # keeps us glued going DOWN stairs and ramps
+	floor_snap_length = FLOOR_SNAP   # keeps us glued going DOWN stairs and ramps
 	floor_max_angle = deg_to_rad(50) # matches the 45 deg ramp being walkable
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -133,7 +211,7 @@ func _ready() -> void:
 			has_model = true
 	placeholder.visible = not has_model
 
-	_anim = _find_anim(body)
+	_anim = AnimPick.find_player(body)
 	if _anim:
 		_clip_idle = AnimPick.find(_anim, "idle")
 		_clip_walk = AnimPick.find(_anim, "walk")
@@ -167,10 +245,8 @@ func _ready() -> void:
 		for c in body.find_children(part, "VisualInstance3D", true, false):
 			_head_parts.append(c as Node3D)
 
-	_equip(weapon_file, WEAPON_BONE)
+	_blade = _build_blade(Socket.equip(body, weapon_file, WEAPON_BONE))
 
-
-const MODEL_DIR := "res://assets/blender/"
 
 ## Put something in Body, by whichever route is available.
 func _adopt_model() -> void:
@@ -182,7 +258,7 @@ func _adopt_model() -> void:
 		if c != placeholder and c is Node3D and (c as Node3D).visible:
 			return                      # already dragged in by hand
 
-	var dir := DirAccess.open(MODEL_DIR)
+	var dir := DirAccess.open(Socket.MODEL_DIR)
 	if dir == null:
 		return
 	var names: Array[String] = []
@@ -195,7 +271,7 @@ func _adopt_model() -> void:
 	for n in names:
 		if character_file != "" and n != character_file:
 			continue
-		var res := load(MODEL_DIR + n)
+		var res := load(Socket.MODEL_DIR + n)
 		if not (res is PackedScene):
 			continue
 		var inst: Node = (res as PackedScene).instantiate()
@@ -208,85 +284,75 @@ func _adopt_model() -> void:
 		return
 
 
-## Hang a BoneAttachment3D off a named bone and return it, or null.
+## A hitbox shaped like whatever weapon actually arrived.
 ##
-## This is code rather than a node dragged into player.tscn because the model
-## is not in the scene file at all — _adopt_model() loads it at runtime, so
-## there is no Skeleton3D to parent anything to until the game is running.
-## Same reason the world is built in code: nothing to re-wire when the asset
-## changes.
-func _socket(bone: String) -> BoneAttachment3D:
-	var skels := body.find_children("*", "Skeleton3D", true, false)
-	if skels.is_empty():
-		push_warning("greenhorn: no Skeleton3D, so no socket '%s'" % bone)
-		return null
-	var skel := skels[0] as Skeleton3D
-
-	if skel.find_bone(bone) == -1:
-		# Say what IS there. A missing socket bone is nearly always the glTF
-		# exporter's Armature > Export Deformation Bones Only, which drops
-		# every non-deform bone silently — and a socket bone is non-deform by
-		# definition, so that tick removes exactly the bones you added.
-		var have: Array[String] = []
-		for i in skel.get_bone_count():
-			have.append(skel.get_bone_name(i))
-		push_warning(("greenhorn: bone '%s' is not in the rig. " % bone)
-			+ "If your sockets are missing but the limbs are here, untick "
-			+ "Armature > Export Deformation Bones Only and re-export.\n"
-			+ "Skeleton has %d bones: %s" % [have.size(), ", ".join(have)])
+## Measured off the mesh rather than typed in as numbers, so a longer sword is
+## a longer reach with nothing to keep in sync — the same reason the plinth
+## captions count vertices instead of trusting a table.
+##
+## It covers the whole blade, not a point at the tip. A swing throws the tip
+## several metres in a handful of frames, and a point would sail clean through
+## a bug between two of them.
+func _build_blade(weapon: Node) -> Area3D:
+	var root := weapon as Node3D
+	if root == null:
 		return null
 
-	# An unapplied Object Mode scale on the Blender armature rides all the way
-	# through to here. The character still looks right, because its meshes are
-	# children of that armature and were shrunk by the same amount — but a
-	# socketed prop is NOT, so it arrives at true size and is then scaled down
-	# with everything else, which reads as "the sword is too small".
-	#
-	# Report it, do not correct it. A silent counter-scale here would make the
-	# weapon wrong again the moment the .blend is fixed properly.
-	var s := skel.global_transform.basis.get_scale()
-	if not s.is_equal_approx(Vector3.ONE):
-		push_warning(("greenhorn: the skeleton carries a scale of %v, so "
-			+ "anything on '%s' renders at that fraction of its true size. "
-			+ "Fix it in Blender with Ctrl+A > All Transforms on the armature "
-			+ "and its meshes, rather than by resizing the weapon.")
-			% [s, bone])
-
-	var at := BoneAttachment3D.new()
-	at.name = "socket_" + bone.replace(".", "_")  # dots are illegal in node names
-	skel.add_child(at)     # must be parented before bone_name can resolve
-	at.bone_name = bone
-	return at
-
-
-## Put a model in a socket. No rig, no skinning — it inherits the bone's
-## transform every frame, which is the whole trick.
-func _equip(file: String, bone: String) -> void:
-	if file == "":
-		return
-	var res := load(MODEL_DIR + file)
-	if not (res is PackedScene):
-		push_warning("greenhorn: %s is not a scene, cannot equip it" % file)
-		return
-	var at := _socket(bone)
-	if at == null:
-		return
-	at.add_child((res as PackedScene).instantiate())
-
-
-func _find_anim(n: Node) -> AnimationPlayer:
-	if n is AnimationPlayer:
-		return n
-	# Skip anything switched off in the editor. An old hidden copy of the
-	# model would otherwise win the search and animate invisibly, while the
-	# visible one stood there in its rest pose looking broken.
-	if n is Node3D and not (n as Node3D).visible:
+	var box := Socket.local_aabb(root)
+	if box.size.length() <= 0.0:
+		push_warning("greenhorn: %s has no meshes, so it cannot hit anything"
+			% weapon_file)
 		return null
-	for c in n.get_children():
-		var found := _find_anim(c)
-		if found:
-			return found
-	return null
+
+	var shape := BoxShape3D.new()
+	shape.size = box.size
+	var cs := CollisionShape3D.new()
+	cs.shape = shape
+	cs.position = box.get_center()
+
+	# Left monitoring the whole time and gated by the swing window below.
+	# Toggling monitoring costs a physics frame to take effect, and losing the
+	# first frame of a fast swing is exactly the frame that mattered.
+	var area := Area3D.new()
+	area.name = "Blade"
+	area.add_child(cs)
+	root.add_child(area)
+	return area
+
+
+## Damage whatever the blade is touching, but only during the live stretch of
+## a swing. Anything with a hurt() takes it, so this does not need to know
+## what a bug is — and the next enemy needs no changes here.
+func _strike() -> void:
+	if _blade == null or _attack == "" or _attack_len <= 0.0:
+		return
+	var t := 1.0 - (_attack_left / _attack_len)   # 0 at the wind-up, 1 at the end
+	if t < HIT_FROM or t > HIT_TO:
+		return
+	var landed := false
+	for b in _blade.get_overlapping_bodies():
+		if b == self or _struck.has(b) or not b.has_method("hurt"):
+			continue
+		_struck.append(b)
+		b.hurt(HIT_DAMAGE, global_position)
+		landed = true
+	if landed:
+		_hitstop()
+
+
+## Slow the world to a crawl for a few frames. Lives here rather than on the
+## target because there is one attacker and there will be many bugs, and two
+## of them stopping time at once would fight over restoring it.
+func _hitstop() -> void:
+	if _stopping:
+		return
+	_stopping = true
+	Engine.time_scale = HITSTOP_SCALE
+	# The last argument is ignore_time_scale — without it this timer is slowed
+	# by the very thing it is waiting to undo, and the game never speeds up.
+	await get_tree().create_timer(HITSTOP_TIME, true, false, true).timeout
+	Engine.time_scale = 1.0
+	_stopping = false
 
 
 ## Start a swing. Silently does nothing if the model has no such clip, so a
@@ -306,6 +372,7 @@ func _swing(clip: String) -> void:
 	_attack = clip
 	_attack_len = a.length
 	_attack_left = a.length
+	_struck.clear()          # a new swing may hit the same bug again
 	_play(clip, true)
 
 
@@ -317,11 +384,10 @@ func _unhandled_input(e: InputEvent) -> void:
 		Input.mouse_mode = (Input.MOUSE_MODE_VISIBLE
 			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 			else Input.MOUSE_MODE_CAPTURED)
+	elif e.is_action_pressed("cam_lock"):
+		_cam_lock = not _cam_lock
 	elif e.is_action_pressed("cam_toggle"):
 		_first_person = not _first_person
-	elif e.is_action_pressed("respawn"):
-		global_position = _spawn
-		velocity = Vector3.ZERO
 	elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and e.is_action_pressed("attack_thrust"):
 		_swing(_clip_thrust)
 	elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and e.is_action_pressed("attack_chop"):
@@ -338,6 +404,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 	_move(delta)
 	_update_camera(delta)
+	_strike()          # before _animate, which is what advances the swing clock
 	_animate(delta)
 
 
@@ -366,12 +433,34 @@ func _move(delta: float) -> void:
 		velocity.y -= GRAVITY * delta
 
 	_try_step(delta)
+
+	# A step in progress owns the vertical. Floor snapping would otherwise
+	# find the lower ground still sitting under us — our axis has not cleared
+	# the edge yet — and pull us straight back down, every frame, which is the
+	# buzzing you get against a plinth instead of a climb.
+	if _stepping > 0.0:
+		_stepping -= delta
+		velocity.y = 0.0
+		floor_snap_length = 0.0
+	else:
+		floor_snap_length = FLOOR_SNAP
 	move_and_slide()
 
-	# face the way we are travelling
-	if wish != Vector3.ZERO:
-		var want := atan2(-wish.x, -wish.z)
-		body.rotation.y = rotate_toward(body.rotation.y, want, TURN_RATE * delta)
+	# Which way to face.
+	#
+	# Locked, or mid-swing, that is wherever the camera is looking: you hit
+	# what you are aiming at rather than what you happen to be walking
+	# towards. Circling a bug is otherwise nearly impossible to land a hit
+	# from, because strafing turns your shoulders away from it.
+	#
+	# The mid-swing case is free — an attack clip is a one-shot, so nothing
+	# about the locomotion animation has to agree with the new facing.
+	var want := body.rotation.y
+	if _cam_lock or _attack != "":
+		want = _yaw
+	elif wish != Vector3.ZERO:
+		want = atan2(-wish.x, -wish.z)
+	body.rotation.y = rotate_toward(body.rotation.y, want, TURN_RATE * delta)
 
 
 ## Godot will happily walk you up a 45 degree ramp and then refuse a 10 cm
@@ -380,24 +469,83 @@ func _move(delta: float) -> void:
 ## whether lifting by STEP_HEIGHT clears it. If it does it was a step, not a
 ## wall — lift, and let floor snapping settle us onto the tread.
 func _try_step(delta: float) -> void:
-	if not is_on_floor():
+	# Mid-step we are technically airborne, so the commit has to keep us in
+	# here or the climb abandons itself halfway up.
+	if not is_on_floor() and _stepping <= 0.0:
 		return
-	var horiz := Vector3(velocity.x, 0.0, velocity.z) * delta
-	if horiz.length_squared() < 1e-8:
+	var flat := Vector3(velocity.x, 0.0, velocity.z)
+	if flat.length_squared() < 1e-8:
+		_stepping = 0.0
 		return
-	if not test_move(global_transform, horiz):
-		return                                   # nothing in the way
+	var dir := flat.normalized()
+
+	# Ask "is something in the way" over a fixed distance, never over one
+	# frame of travel. A frame is 5 cm at a walk and sub-millimetre at a
+	# crawl — below test_move's own margin — so against something you are
+	# already touching the answer flickered between blocked and clear, and
+	# every clear frame cancelled the climb and started it again. That is why
+	# the buzz got faster the slower you went.
+	if not test_move(global_transform, dir * STEP_CONTACT):
+		_stepping = 0.0                          # over the edge; nothing in the way
+		return
+
+	# Reach ahead by a full stride. Everything below asks "what is over
+	# there", and one frame is not over there yet.
+	var probe := dir * maxf(flat.length() * delta, STEP_PROBE)
+
 	var lift := Vector3.UP * STEP_HEIGHT
 	if test_move(global_transform, lift):
 		return                                   # no headroom to step into
-	if test_move(global_transform.translated(lift), horiz):
+	if test_move(global_transform.translated(lift), probe):
 		return                                   # still blocked up there: a wall
-	global_position += lift
+
+	# How far up do we ACTUALLY need to go? Cast back down from the lifted,
+	# advanced position to find the tread.
+	#
+	# This used to lift the full STEP_HEIGHT every time, which threw you 30 cm
+	# into the air for a 15 cm riser and dropped you again — once per step, and
+	# continuously against anything you could not really climb. That was the
+	# jerking.
+	var hit := KinematicCollision3D.new()
+	if not test_move(global_transform.translated(lift + probe), -lift, hit):
+		return                                   # nothing to land on: a gap, not a step
+
+	# Only step onto something you could have stood on anyway.
+	if hit.get_normal().angle_to(Vector3.UP) > floor_max_angle:
+		return
+	# And only onto things that hold still. Stepping onto a bug half works and
+	# then it walks out from under you, which is its own kind of jerk. Bumping
+	# into one is the more honest result.
+	if not (hit.get_collider() is StaticBody3D):
+		return
+
+	var rise := STEP_HEIGHT + hit.get_travel().y   # travel.y is negative
+	if rise <= 0.0:
+		return
+	# Climb at a fixed rate rather than teleporting the whole riser at once.
+	# A tall step takes more frames instead of landing a bigger blow, so all
+	# three stair heights feel the same going up.
+	rise = minf(rise, STEP_RATE * delta)
+	global_position.y += rise
+	_step_offset = minf(_step_offset + rise, STEP_HEIGHT)
+	_stepping = STEP_COMMIT
 
 
 func _update_camera(delta: float) -> void:
 	pivot.rotation.y = _yaw
 	pivot.rotation.x = _pitch
+
+	# Only the step-up is smoothed, never ordinary vertical motion. Damping
+	# jumps and falls the same way would feel floaty and would leave the
+	# camera behind exactly when you most need it with you.
+	#
+	# The offset goes on the model as well as the camera. The collision body
+	# has to be up there — physics needs it — but nothing you actually look at
+	# does, and smoothing the camera alone just detaches it from a robot that
+	# is still popping.
+	_step_offset = lerpf(_step_offset, 0.0, 1.0 - pow(0.5, delta * STEP_SMOOTH))
+	pivot.position.y = CAM_HEIGHT - _step_offset
+	body.position.y = -_step_offset
 
 	var want := 0.0 if _first_person else CAM_DISTANCE
 	if not _first_person:
@@ -447,7 +595,9 @@ const LAND_HOLD := 0.22   ## seconds the landing clip is protected for
 func _animate(delta: float) -> void:
 	if _anim == null:
 		return
-	var grounded := is_on_floor()
+	# Mid-step we are off the floor by construction, so without this a stair
+	# climb plays as a jump.
+	var grounded := is_on_floor() or _stepping > 0.0
 
 	# --- touchdown. Hold the landing briefly or the walk that follows stamps
 	# on it the very next frame and you never see it.

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://wya2oc2bya46"
-path="res://.godot/imported/Tim2.blend-06580fe57ac20ad441a80f349c03b56d.scn"
+uid="uid://be4x5mry7ra6n"
+path="res://.godot/imported/wall-broken.blend-a83ed24c1db3d35516608f94014f03dd.scn"
 
 [deps]
 
-source_file="res://assets/blender/Tim2.blend"
-dest_files=["res://.godot/imported/Tim2.blend-06580fe57ac20ad441a80f349c03b56d.scn"]
+source_file="res://assets/blender/wall-broken.blend"
+dest_files=["res://.godot/imported/wall-broken.blend-a83ed24c1db3d35516608f94014f03dd.scn"]
 
 [params]
 

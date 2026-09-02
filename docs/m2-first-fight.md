@@ -29,20 +29,23 @@ sandbox already has:
 | Animation | idle / walk / run / jump, optional fall / land |
 | Model loading | drop a `.blend` in `assets/blender/`, it appears |
 | Diagnostics | plinth captions report clips, rigs, mesh and vert counts |
-| Sockets | `_socket()` / `_equip()`, sword rides `weapon.socket.R` |
+| Sockets | `Socket.make()` / `Socket.equip()`, shared by player and bug |
 | Attacks | `attack.thrust` on left click, `attack.chop` on right |
+| Enemy | `bug.gd` — walks at you, wears its shell on `shell.socket` |
+| Hit detection | blade `Area3D` sized off the weapon mesh, `hurt()` on the target |
 
 Not built yet, and needed for M2:
 
-- Any enemy at all
-- Damage, hit detection, hit feedback
+- The shell coming off — reparent it onto a `RigidBody3D`
+- Hit feedback: flash, knockback, hitstop
 
-**Outstanding, and it will come back:** Tim's armature still exports carrying
-`scale 0.2106`. The sword was scaled up in Blender to compensate rather than
-the armature being applied, which works but hides the problem — every one of
-the seven remaining sockets on Tim will need the same invisible 4.75× fudge.
-Worth applying properly before augments start bolting on. See
-[the four that actually cost time](#the-four-that-actually-cost-time).
+**Resolved 2026-09-01.** Tim's armature was carrying an unapplied
+`scale 0.2106`, and the sword had a matching 1.8× inflation baked in to cancel
+it out. Both are gone — the armature exports clean, and `sword1.blend` now
+holds a sword at its honest size. Applying it did shift some animation frames
+downward, which was fixed with a Z adjustment; the clips were tidied at the
+same time. Metres mean metres on this rig now, which is what makes one shell
+asset able to sit on a bug's back *and* on Tim's shoulder.
 
 ---
 
@@ -264,14 +267,15 @@ The player model is not in `player.tscn` at all; `_adopt_model()` loads it at
 runtime, so there is no `Skeleton3D` to parent anything to until the game is
 running.
 
-So it is code, in `scripts/player.gd`:
+So it is code, in `scripts/socket.gd` — shared, because the sword and the
+shell were always going to be the same two functions:
 
 | | |
 |---|---|
-| `_socket(bone)` | makes the `BoneAttachment3D` on whatever rig arrived |
-| `_equip(file, bone)` | loads a `.blend` and hangs it there |
-| `WEAPON_BONE` | the bone name it looks for |
-| `weapon_file` | which `.blend` to hold — change it, swap weapons |
+| `Socket.make(root, bone)` | makes the `BoneAttachment3D` on whatever rig arrived |
+| `Socket.equip(root, file, bone)` | loads a `.blend` and hangs it there |
+| `WEAPON_BONE`, `weapon_file` | in `player.gd` — which bone, which `.blend` |
+| `SHELL_BONE`, `shell_file` | the same two in `bug.gd` |
 
 Swapping weapons is one string. No re-export, no scene edit.
 
@@ -374,6 +378,22 @@ Answer as they come up; add to this list rather than starting a new one.
 3. **Melee or ranged first?** Melee tests the socket and the shell in one go.
 4. **How does the bug telegraph?** Nothing to answer yet — it does not
    attack in M2 — but it is the next question after.
+5. **Is there a non-combat game in here?** *Noticed 2026-09-01, from the
+   build rather than from thinking about it.* For the one session where the
+   bug could walk at you but neither of you could attack, it did not read as
+   an enemy — it read as a **follower pet**, and that was immediately more
+   interesting than it had any right to be. Worth naming now, because it is
+   the kind of thing the build shows you once and you never notice again
+   after the sword starts connecting.
+
+   This does not change M2. The gate is still whether cracking a shell is
+   satisfying, and it needs answering on its own terms. But if that answer
+   comes back a lukewarm *yes, sort of*, this is the first place to look
+   before concluding the game is somewhere else entirely. A creature that
+   follows you, that you can crack open **or not**, is a different and more
+   surprising proposition than one that only ever comes at you.
+
+   Nothing to build. Just do not let it evaporate.
 
 ## Reference
 

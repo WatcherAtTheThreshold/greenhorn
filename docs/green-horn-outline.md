@@ -158,6 +158,36 @@ One room, one enemy, one weapon, one item. Prove that's fun; the rest is product
 - Bug variety: how many enemy types before the vertical slice reads as a game? (Probably one. Possibly two.)
 - Does the run structure use hand-authored rooms, or procedural assembly from room pieces?
 
+- **Should there be small structures, and is one of them a shop?** *Raised
+  2026-09-02.* Two separate questions wearing one coat, and they want pulling
+  apart:
+
+  **A shop is a UI problem, not an architecture problem.** Whatever it looks
+  like, it is a trigger, a list and a currency. The building around it is
+  decoration, so "should a building be a shop" should not be what decides
+  whether structures get built. The story doc's lab station already implies a
+  return destination, and that is M4 territory — probably a scene change
+  rather than a hut on the field.
+
+  **Structures are worth testing anyway, for reasons that have nothing to do
+  with shops.** The untested risks are:
+
+  - **The camera.** The spring arm pulls in on walls, and has never met a
+    doorway, a low roof or an interior. Third person in a small building is
+    where third-person cameras go to die. This is the biggest unknown in the
+    project right now.
+  - **Occlusion.** Bugs behind a wall, the player losing sight of a fight.
+  - **Blender-authored collision** via the `-col` / `-convcol` / `-colonly`
+    mesh suffixes — the pipeline supports it and the project has never used
+    it once.
+  - Whether the 2 m modular grid in §4 is the right module size.
+
+  **The cheap way to find out:** the plot is already organised as test bands —
+  ramps at `z -14`, stairs at `z -28`. Add a **shelter band**: one wall, one
+  doorway, one roofed corner. Walk into it and watch the camera. That answers
+  the architecture questions without deciding anything about the game, which
+  is exactly what the sandbox is for.
+
 ---
 
 ## 8. Immediate Next Actions

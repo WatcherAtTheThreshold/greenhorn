@@ -20,7 +20,8 @@ Open the folder in Godot 4.7 and press F5.
 | left click | thrust — plays `attack.thrust` |
 | right click | chop — plays `attack.chop` |
 | `C` | toggle first / third person |
-| `R` | respawn at the start |
+| `Q` | camera lock — body faces where you look, not where you walk |
+| `R` | restart — rebuilds the plot, revives the bug, clears debris |
 | `Esc` | release the mouse |
 
 ## Drop a model in

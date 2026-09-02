@@ -9,6 +9,7 @@ extends Node3D
 ##   z ~   0   the import plinths (whatever you dropped in assets/blender/)
 ##   z ~ -14   ramps at 15 / 30 / 45 / 60 degrees
 ##   z ~ -28   stairs at three riser heights
+##   z ~ -42   the shelter: walls, a doorway, and what they do to the camera
 ##   x ~ +15   scale references
 ##   x ~ -15   material comparison
 
@@ -17,9 +18,49 @@ const PLAYER := preload("res://scenes/player.tscn")
 
 const GROUND     := 140.0
 const SPAWN      := Vector3(0.0, 1.2, 9.0)
+## Off the path and clear of the plinth row, so they have to walk to reach you
+## and you get to watch them come.
+const BUG_SPAWN  := Vector3(9.0, 0.4, 4.0)
+## More than one, because everything about the fight has so far been tuned
+## against a single target. A swing that sweeps through two of them is the
+## first honest test of the hit window, the cancel window and the knockback.
+const BUG_COUNT  := 4
+## Ring radius at spawn. Far enough apart that they do not start inside each
+## other; close enough that they arrive as a group rather than a queue.
+const BUG_SPREAD := 2.4
 const RAMP_Z     := -14.0
 const STAIR_Z    := -28.0
 const PLINTH_Z   := 0.0
+
+# --- shelter ----------------------------------------------------------------
+## The structure band, and its job is the camera. A spring arm in this project
+## has never met a doorway or an enclosure, and that is the biggest untested
+## thing in the controller.
+##
+## Deliberately 6 m across. The camera sits CAM_DISTANCE (2.25 m) behind you,
+## so standing in the middle of a room of side S the arm only extends fully if
+## S is over about 5 m. Six is the smallest square where third person still
+## has room to be third person — which makes this the honest test rather than
+## a flattering one.
+const SHELTER_Z    := -42.0
+const SHELTER_HALF := 3.0
+const MODULE       := 2.0        ## the grid the wall pieces are built to
+const WALL_FILE    := "wall.blend"
+const BROKEN_FILE  := "wall-broken.blend"
+const DOOR_FILE    := "door.blend"
+
+# --- scenery ----------------------------------------------------------------
+## Scattered as MultiMeshes: any number of instances, one draw call each.
+## Godot does not batch MeshInstance3Ds, so placing 34 trees the obvious way
+## costs 34 draw calls before a single bug is on screen — and trees are the
+## thing there will eventually be hundreds of.
+const TREE_FILE  := "tree1.blend"
+const ROCK_FILE  := "rock1.blend"
+const TREE_COUNT := 34
+const ROCK_COUNT := 22
+## A tree's collision is a trunk-sized column, not its bounds. The canopy is
+## the widest part of the mesh and you are meant to walk under it.
+const TRUNK_RADIUS := 0.25
 
 var _sun: DirectionalLight3D
 
@@ -32,12 +73,43 @@ func _ready() -> void:
 	_build_stairs()
 	_build_scale_refs()
 	_build_material_row()
+	_build_shelter()
 	_build_scenery()
 	_mount_imports()
 
 	var p := PLAYER.instantiate()
 	p.position = SPAWN
 	add_child(p)
+
+	# Placed on a ring rather than scattered, so every restart puts them in the
+	# same spots and two attempts are actually comparable — same reason the
+	# scenery is seeded.
+	for i in BUG_COUNT:
+		var a := TAU * float(i) / float(BUG_COUNT)
+		var b := Bug.new()
+		b.name = "Bug%d" % i
+		b.position = BUG_SPAWN + Vector3(cos(a), 0.0, sin(a)) * BUG_SPREAD
+		# Handing each one the player directly beats a group lookup: the world
+		# already holds both, and there is nothing to go stale.
+		b.target = p as Node3D
+		add_child(b)
+
+
+## R rebuilds the whole plot from scratch: player back at spawn, bug alive and
+## wearing its shell again, debris gone.
+##
+## It lives here rather than on the player because none of that is the
+## player's business, and because a scene reload is exactly what you want
+## between attempts once things can break and stay broken. The scenery is
+## seeded, so the world comes back identical rather than reshuffled.
+func _unhandled_input(e: InputEvent) -> void:
+	if not e.is_action_pressed("respawn"):
+		return
+	# A hitstop caught mid-flight is awaiting a timer inside a player that is
+	# about to be freed, so the line restoring normal speed would never run
+	# and the fresh scene would come up in slow motion.
+	Engine.time_scale = 1.0
+	get_tree().reload_current_scene()
 
 
 # --- environment ------------------------------------------------------------
@@ -235,7 +307,7 @@ func _build_stairs() -> void:
 			_box(Vector3(3.0, h, 0.42), Transform3D(Basis(), pos), mat)
 		_label("%d cm risers" % int(riser * 100.0), Vector3(x, 1.1, STAIR_Z + 1.4))
 		x += 9.0
-	_label("STEP_HEIGHT in player.gd is 45 cm. Lower it and these start failing.",
+	_label("STEP_HEIGHT in player.gd is 28 cm, so the 40 needs a jump.",
 		Vector3(0.0, 2.4, STAIR_Z + 3.6), 34, Palette.STONE_LIGHT)
 
 
@@ -282,10 +354,8 @@ func _build_material_row() -> void:
 func _build_scenery() -> void:
 	# None of this is a test. It is here so the plot reads as somewhere,
 	# rather than as a grey lab with objects in it.
-	var trunk := Palette.solid(Palette.WOOD, 0.95)
-	var leaf_a := Palette.solid(Palette.LEAF, 0.95)
-	var leaf_b := Palette.solid(Palette.LEAF_LIGHT, 0.95)
-	var rock := Palette.solid(Palette.STONE, 0.95)
+	# The hills stay primitives — they are terrain, not props, and a squashed
+	# sphere at 60 m is doing a job no modelled asset would do better.
 	var hill := Palette.solid(Palette.HILL, 0.98)
 
 	var rng := RandomNumberGenerator.new()
@@ -300,25 +370,157 @@ func _build_scenery() -> void:
 			hill, rng.randf_range(0.22, 0.4))
 
 	# trees, kept clear of the test bands
-	for i in 34:
+	var trees: Array[Transform3D] = []
+	for i in TREE_COUNT:
 		var px := rng.randf_range(-45.0, 45.0)
 		var pz := rng.randf_range(-46.0, 34.0)
-		if abs(px) < 21.0 and pz > -36.0 and pz < 14.0:
+		if abs(px) < 21.0 and pz > -50.0 and pz < 14.0:
 			continue
-		var th := rng.randf_range(2.4, 4.6)
-		_cyl(rng.randf_range(0.16, 0.28), th, Vector3(px, th * 0.5, pz), trunk)
-		var cr := rng.randf_range(1.1, 1.9)
-		_sphere(cr, Vector3(px, th + cr * 0.45, pz),
-			leaf_a if rng.randf() < 0.6 else leaf_b, rng.randf_range(0.7, 0.95))
+		# One mesh, spun and resized per instance. A forest that reads as a
+		# forest out of a single asset — no second tree needed for M3.
+		trees.append(_place(rng, Vector3(px, 0.0, pz), 0.75, 1.35))
+	_scatter(TREE_FILE, trees, "Trees", true)
 
 	# rocks
-	for i in 22:
+	var rocks: Array[Transform3D] = []
+	for i in ROCK_COUNT:
 		var rx := rng.randf_range(-44.0, 44.0)
 		var rz := rng.randf_range(-44.0, 32.0)
-		if abs(rx) < 19.0 and rz > -34.0 and rz < 12.0:
+		if abs(rx) < 19.0 and rz > -50.0 and rz < 12.0:
 			continue
-		var rr := rng.randf_range(0.35, 1.1)
-		_sphere(rr, Vector3(rx, rr * 0.35, rz), rock, rng.randf_range(0.45, 0.75), true)
+		# Sunk slightly, because a boulder resting exactly on the ground plane
+		# reads as dropped there rather than as part of the place.
+		rocks.append(_place(rng, Vector3(rx, -0.06, rz), 0.7, 1.8))
+	_scatter(ROCK_FILE, rocks, "Rocks", false)
+
+
+func _build_shelter() -> void:
+	var z := SHELTER_Z
+
+	# Back wall, full width.
+	for i in 3:
+		_piece(WALL_FILE, Vector3((float(i) - 1.0) * MODULE, 0.0, z - SHELTER_HALF), 0.0)
+
+	# Sides, stopping short of the corners. A ruin with gaps in it reads
+	# better than a sealed box, and the gaps are what let you find out
+	# whether the camera copes with a wall between it and you.
+	for i in 2:
+		var zz := z + (float(i) - 0.5) * MODULE
+		_piece(WALL_FILE, Vector3(-SHELTER_HALF, 0.0, zz), PI * 0.5)
+		_piece(BROKEN_FILE, Vector3(SHELTER_HALF, 0.0, zz), PI * 0.5)
+
+	# Front: a doorway with broken wall either side, so there is a way in and
+	# a reason to walk through it rather than round.
+	_piece(DOOR_FILE, Vector3(0.0, 0.0, z + SHELTER_HALF), 0.0)
+	_piece(BROKEN_FILE, Vector3(-MODULE, 0.0, z + SHELTER_HALF), 0.0)
+	_piece(BROKEN_FILE, Vector3(MODULE, 0.0, z + SHELTER_HALF), 0.0)
+
+	_label("walk in and watch the camera", Vector3(0.0, 4.2, z + SHELTER_HALF + 2.0),
+		36, Palette.STONE_LIGHT)
+
+
+## Place one imported piece, upright on the ground and spun about Y.
+##
+## No collision is built here: it arrives with the mesh, generated by Godot
+## from the -col and -convcol suffixes on the object names in Blender. That is
+## the whole point of authoring it over there.
+func _piece(file: String, pos: Vector3, yaw: float) -> void:
+	var res := load(IMPORT_DIR + file)
+	if not (res is PackedScene):
+		push_warning("greenhorn: shelter piece %s did not load" % file)
+		return
+	var n := (res as PackedScene).instantiate() as Node3D
+	if n == null:
+		return
+	n.position = pos
+	n.rotation.y = yaw
+	add_child(n)
+
+
+## One scattered placement: on the ground, spun on Y, uniformly resized.
+##
+## Uniform on purpose. Jolt refuses a non-uniform scale on a collision shape
+## and quietly substitutes a uniform one, so a squashed body would give you a
+## collider that does not match what you can see.
+func _place(rng: RandomNumberGenerator, pos: Vector3, lo: float, hi: float) -> Transform3D:
+	var s := rng.randf_range(lo, hi)
+	var b := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(s, s, s))
+	return Transform3D(b, pos)
+
+
+## Draw one mesh at every given transform, in a single draw call, and give
+## each instance a static collider.
+##
+## `tall` picks the collider: a trunk-width column for trees, so you can walk
+## under the canopy, or the mesh's own bounds for anything squat.
+##
+## The colliders are separate bodies because a MultiMesh has no collision —
+## that is the trade. They cost physics, not draw calls, and a static body the
+## player never touches costs close to nothing.
+func _scatter(file: String, xforms: Array[Transform3D], label: String, tall: bool) -> void:
+	if xforms.is_empty():
+		return
+	var res := load(IMPORT_DIR + file)
+	if not (res is PackedScene):
+		push_warning("greenhorn: no scenery mesh in %s, so no %s" % [file, label])
+		return
+	var inst: Node = (res as PackedScene).instantiate()
+	var found := inst.find_children("*", "MeshInstance3D", true, false)
+	if inst is MeshInstance3D:
+		found.append(inst)
+	if found.is_empty():
+		push_warning("greenhorn: %s has no mesh to scatter" % file)
+		inst.queue_free()
+		return
+
+	if found.size() > 1:
+		push_warning(("greenhorn: %s has %d meshes; only the first is "
+			+ "scattered. Join them in Blender — a MultiMesh draws one mesh, "
+			+ "which is the whole reason this is cheap.") % [file, found.size()])
+
+	# The object's own transform comes along, accumulated to the scene root:
+	# rock1 carries an unapplied 0.41 scale, and dropping it would put
+	# boulders the size of sheds on the plot.
+	var src := found[0] as MeshInstance3D
+	var mesh := src.mesh
+	var local := Transform3D.IDENTITY
+	var up: Node = src
+	while up is Node3D:
+		local = (up as Node3D).transform * local
+		up = up.get_parent()
+	inst.queue_free()
+
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		mm.set_instance_transform(i, xforms[i] * local)
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = label
+	mmi.multimesh = mm
+	add_child(mmi)
+
+	# Measured off the mesh, so remodelling the tree resizes its collider too.
+	var box := local * mesh.get_aabb()
+	for xf in xforms:
+		var body := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		if tall:
+			var cyl := CylinderShape3D.new()
+			cyl.radius = TRUNK_RADIUS
+			cyl.height = box.size.y
+			cs.shape = cyl
+			cs.position = Vector3(0.0, box.position.y + box.size.y * 0.5, 0.0)
+		else:
+			var bs := BoxShape3D.new()
+			# inset horizontally so a rounded rock does not feel square underfoot
+			bs.size = Vector3(box.size.x * 0.8, box.size.y, box.size.z * 0.8)
+			cs.shape = bs
+			cs.position = box.get_center()
+		body.add_child(cs)
+		add_child(body)
+		body.transform = xf
 
 
 # --- whatever you dropped in ------------------------------------------------
@@ -404,21 +606,11 @@ func _visual_top(n: Node) -> float:
 	return best
 
 
-func _find_player(n: Node) -> AnimationPlayer:
-	if n is AnimationPlayer:
-		return n as AnimationPlayer
-	for c in n.get_children():
-		var f := _find_player(c)
-		if f:
-			return f
-	return null
-
-
 ## Loop something on a mounted model so you can see it move, and report what
 ## came through. If a caption says "no animations" the export is the problem,
 ## not the engine.
 func _autoplay(inst: Node) -> String:
-	var ap := _find_player(inst)
+	var ap := AnimPick.find_player(inst)
 	if ap == null:
 		return "no AnimationPlayer"
 	var list := ap.get_animation_list()

@@ -60,3 +60,22 @@ static func set_loop(ap: AnimationPlayer, name: String, on: bool) -> void:
 	var a := ap.get_animation(name)
 	if a:
 		a.loop_mode = Animation.LOOP_LINEAR if on else Animation.LOOP_NONE
+
+
+## The AnimationPlayer inside an imported model, or null.
+##
+## Written here rather than three times over, because the player, the plinth
+## captions and now the bug all need the same search.
+static func find_player(n: Node) -> AnimationPlayer:
+	if n is AnimationPlayer:
+		return n as AnimationPlayer
+	# Skip anything switched off in the editor. An old hidden copy of the
+	# model would otherwise win the search and animate invisibly, while the
+	# visible one stood there in its rest pose looking broken.
+	if n is Node3D and not (n as Node3D).visible:
+		return null
+	for c in n.get_children():
+		var found := find_player(c)
+		if found:
+			return found
+	return null

@@ -17,6 +17,9 @@ const WOOD         := Color("8a5c3a")
 const LEAF         := Color("5f9440")
 const LEAF_LIGHT   := Color("7cae4c")
 const ACCENT       := Color("e0a63c")   ## marigold — used for signage and markers
+const HIT_FLASH    := Color("fff3dc")   ## the blink on a struck enemy. Warm rather
+                                        ## than pure white, so it reads as sunlight
+                                        ## catching it rather than as a UI effect
 const HILL         := Color("6b8f4a")
 
 const SKY_TOP      := Color("4f9fd8")
