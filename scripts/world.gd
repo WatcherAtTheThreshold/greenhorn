@@ -436,6 +436,15 @@ func _piece(file: String, pos: Vector3, yaw: float) -> void:
 	n.rotation.y = yaw
 	add_child(n)
 
+	# Godot does not warn about a suffix it does not recognise. It treats it
+	# as part of the name, imports the mesh, and hands you a wall you walk
+	# straight through with nothing in the log to say why — `-con` instead of
+	# `-col` costs an evening otherwise.
+	if n.find_children("*", "StaticBody3D", true, false).is_empty():
+		push_warning(("greenhorn: %s arrived with no collision. The object "
+			+ "name in Blender must end in exactly -col, -convcol, -colonly "
+			+ "or -convcolonly.") % file)
+
 
 ## One scattered placement: on the ground, spun on Y, uniformly resized.
 ##

@@ -31,7 +31,7 @@ Set in the same world as *Subtle Spirits*.
 | Held weapons / tools | 200–800 | Small but near camera |
 | Small props (chair, crate, barrel) | 100–400 | |
 | Rocks, ground clutter | 50–250 | |
-| Trees | 300–1,000 | Leaves as flat cards, never modeled |
+| Trees | 300–2,500 | Solid geometry, not cards — see below |
 | Small structures (shed) | 500–1,500 | |
 | Cottage with interior | 2,000–5,000 | Interior roughly doubles cost |
 
@@ -49,6 +49,21 @@ Draw calls and materials, not vertices. Fifty rocks with fifty materials is far 
 
 Silhouette, not surface. A shape that reads at a glance from the 3/4 rear view is worth more than geometric detail on a flat panel. Surface detail lives in the texture. This is the same judgment call as where to spend paint.
 
+### Foliage: geometry, not cards — decided 2026-09-02
+
+Card foliage was the original plan and it is the right advice for a
+realistic-stylised tree with an alpha-cut leaf texture. It is the wrong tool
+for this project. Cards need a second texture and a second material, which
+fights the one-atlas rule everything else follows; and flat quads do not catch
+light, which is where this game's mood actually lives.
+
+The first attempt was 33 objects and 33 draw calls. The solid version is one
+object, one surface, one material, ~2,400 triangles — over the old budget and
+comfortably worth it, because triangles were never the constraint. Scattered
+as a `MultiMesh` it is **one draw call for the whole forest**.
+
+The same logic points at geometry rather than texture for stone walls.
+
 ---
 
 ## 3. Held Items & Attachments
@@ -64,9 +79,12 @@ Silhouette, not surface. A shape that reads at a glance from the 3/4 rear view i
 
 ### Godot side
 
-- Add a `BoneAttachment3D` node, point it at the hand bone.
-- Add the weapon mesh as its child.
-- Swap the child at runtime to swap weapons — no re-export needed.
+- `Socket.equip(root, file, bone)` in `scripts/socket.gd`. It builds the
+  `BoneAttachment3D`, finds the bone and hangs the model off it.
+- Change `weapon_file` to swap weapons — no re-export, no scene edit. It is
+  code rather than a node in a `.tscn` because no model is in a scene file:
+  they are all loaded at runtime, so there is no `Skeleton3D` to parent to
+  until the game is running.
 
 This is exactly what a rogue-lite requires, since item pickups have to change equipment on the fly.
 

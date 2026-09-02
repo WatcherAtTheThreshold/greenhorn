@@ -75,10 +75,22 @@ Godot reads suffixes on mesh names in an imported scene:
 | suffix | result |
 |---|---|
 | `-col` | static trimesh collision, mesh still visible |
-| `-convcol` | convex collision |
-| `-colonly` | collision only, the mesh is discarded |
+| `-convcol` | convex collision, mesh still visible |
+| `-colonly` | trimesh collision only, the mesh is discarded |
+| `-convcolonly` | convex collision only, the mesh is discarded |
 | `-rigid` | becomes a RigidBody3D |
 | `-navmesh` | becomes a navigation mesh |
+
+**A suffix Godot does not recognise fails completely silently.** It treats it
+as part of the name, imports the mesh perfectly, and gives you no collider —
+nothing in the log, nothing visibly different. `-con` instead of `-col` is a
+wall you walk straight through. Those four spellings above are the only ones;
+anything else is just a name.
+
+**`-convcol` fills in any hole.** A convex hull of a broken wall is a solid
+block up to its highest point, so the notch you modelled becomes an invisible
+wall. Convex is right — and cheaper — for solid lumps only. Anything with a
+gap or an opening in it wants `-col`.
 
 So a wall called `wall-col` arrives already solid. Empties become `Node3D`,
 which makes them free spawn points and attachment sockets.

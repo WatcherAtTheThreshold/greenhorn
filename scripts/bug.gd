@@ -92,6 +92,8 @@ func _ready() -> void:
 	col.position.y = BODY_HEIGHT * 0.5   # the model's origin is at its feet
 	add_child(col)
 
+	collision_layer = Layers.CHARACTER
+	collision_mask = Layers.SOLID
 	floor_snap_length = 0.4
 	floor_max_angle = deg_to_rad(50)     # same slope tolerance as the player
 
@@ -305,6 +307,9 @@ func _launch(piece: Node3D, away: Vector3, middle: Vector3) -> void:
 
 	var rb := RigidBody3D.new()
 	rb.name = "ShellDebris"
+	# Off the world layer on purpose: debris must never shove the camera.
+	rb.collision_layer = Layers.DEBRIS
+	rb.collision_mask = Layers.WORLD | Layers.CHARACTER
 	var cs := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = box.size

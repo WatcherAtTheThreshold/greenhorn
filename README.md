@@ -21,7 +21,7 @@ Open the folder in Godot 4.7 and press F5.
 | right click | chop — plays `attack.chop` |
 | `C` | toggle first / third person |
 | `Q` | camera lock — body faces where you look, not where you walk |
-| `R` | restart — rebuilds the plot, revives the bug, clears debris |
+| `R` | restart — rebuilds the plot, revives the bugs, clears debris |
 | `Esc` | release the mouse |
 
 ## Drop a model in
@@ -69,12 +69,20 @@ Bands running away from where you spawn:
 - **-14 m** — ramps at 15 / 30 / 45 / 60 degrees. `floor_max_angle` is 50, so
   the 60 should refuse you. That is the number to change if it should not.
 - **-28 m** — stairs at 15 / 25 / 40 cm risers. Godot will not climb a
-  vertical riser on its own, so `player.gd` does it manually; `STEP_HEIGHT`
-  decides how tall a step you can walk up.
+  vertical riser on its own, so `player.gd` does it manually. `STEP_HEIGHT`
+  is 28 cm, so the first two walk and the 40 needs a jump — the line between
+  elevation you shouldn't notice and elevation you're meant to.
+- **-42 m** — a ruined shelter: walls, a broken wall, a doorway. Its job is
+  the camera. It is 6 m across because the arm is 2.25 m, and anything
+  smaller collapses to first person on its own.
 - **right** — a 1 m cube, a 1.8 m post to build characters against, a 2 m
   doorway to check nothing is too fat to fit through
 - **left** — a roughness sweep plus a metal and an emissive sphere, to
   compare imported materials against
+
+Four bugs spawn off to the right and walk at you. Left click thrusts, right
+click chops; the second hit takes a beetle's shell off and the third kills
+it. `R` puts it all back.
 
 See [docs/blender-checklist.md](docs/blender-checklist.md) for the five things
 that go wrong on the way out of Blender.
@@ -92,8 +100,12 @@ The sandbox is feeding a game. Planning lives in `docs/`:
 scenes/main.tscn     empty node; world.gd builds everything
 scenes/player.tscn   CharacterBody3D + camera rig
 scripts/world.gd     the plot, the lighting, the import mount
-scripts/player.gd    controller, camera arm, stair stepping
+scripts/player.gd    controller, camera arm, stair stepping, swings
 scripts/palette.gd   every colour in the project
+scripts/bug.gd       the beetle: walks at you, wears a breakable shell
+scripts/socket.gd    hanging unrigged props off bones
+scripts/anim_pick.gd finding and driving imported animation clips
+scripts/layers.gd    physics layers, so the camera only sees the world
 assets/blender/      drop .blend files here
 ```
 

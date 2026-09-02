@@ -80,7 +80,10 @@ const CAM_MIN_PITCH   := -1.25    ## radians (looking up)
 const CAM_MAX_PITCH   := 1.05     ## radians (looking down)
 const CAM_SENS        := 0.0025   ## radians per pixel of mouse movement
 const CAM_LAG         := 12.0     ## how quickly the arm settles; higher = tighter
-const CAM_PUSH_MARGIN := 0.25     ## keep the camera this far off any wall it hits
+## The camera is a volume, not a point. This is the sphere swept back from the
+## head to find where the arm can actually reach, and it doubles as the
+## standoff from whatever it lands against.
+const CAM_RADIUS      := 0.22
 
 ## Parts to hide when the camera is inside the character's head — first person,
 ## and also when a wall shoves the arm all the way in.
@@ -90,7 +93,7 @@ const CAM_PUSH_MARGIN := 0.25     ## keep the camera this far off any wall it hi
 ## person keeps your own arms, torso and the sword swinging in front of you,
 ## with no second model and no second set of animations. Names that are not in
 ## the model are simply skipped, so this costs nothing on other characters.
-const HEAD_PARTS: Array[String] = ["head", "eye1", "eye2", "mouth"]
+const HEAD_PARTS: Array[String] = ["head", "eye1", "eye2", "mouth", "neck"]
 
 # --- sockets ----------------------------------------------------------------
 ## The bone a held weapon rides. Add it in Blender parented to the hand bone
@@ -188,6 +191,8 @@ var _stopping := false          ## a hitstop is already running
 func _ready() -> void:
 	_spawn = global_position
 	pivot.position.y = CAM_HEIGHT
+	collision_layer = Layers.CHARACTER
+	collision_mask = Layers.SOLID
 	floor_snap_length = FLOOR_SNAP   # keeps us glued going DOWN stairs and ramps
 	floor_max_angle = deg_to_rad(50) # matches the 45 deg ramp being walkable
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -315,6 +320,7 @@ func _build_blade(weapon: Node) -> Area3D:
 	# first frame of a fast swing is exactly the frame that mattered.
 	var area := Area3D.new()
 	area.name = "Blade"
+	area.collision_mask = Layers.CHARACTER   # things that can be hurt, not scenery
 	area.add_child(cs)
 	root.add_child(area)
 	return area
@@ -553,11 +559,26 @@ func _update_camera(delta: float) -> void:
 		# +Z is *behind* the pivot, because Godot faces -Z.
 		var from := pivot.global_position
 		var to := pivot.global_transform * Vector3(0.0, 0.0, CAM_DISTANCE)
-		var q := PhysicsRayQueryParameters3D.create(from, to)
+
+		# A sphere, not a ray. A ray is infinitely thin, so it slides straight
+		# through the gap between two wall segments and leaves the camera
+		# parked inside the wall beside it — which is how you end up staring
+		# at masonry with the game happening somewhere behind it.
+		var ball := SphereShape3D.new()
+		ball.radius = CAM_RADIUS
+		var q := PhysicsShapeQueryParameters3D.new()
+		q.shape = ball
+		q.transform = Transform3D(Basis(), from)
+		q.motion = to - from
 		q.exclude = [get_rid()]
-		var hit := get_world_3d().direct_space_state.intersect_ray(q)
-		if hit:
-			want = max(0.4, from.distance_to(hit.position) - CAM_PUSH_MARGIN)
+		# World only. A bug walking behind you must not shove the view into
+		# the back of your own head at the exact moment you need to see it.
+		q.collision_mask = Layers.WORLD
+
+		# cast_motion returns [safe, unsafe] as fractions of the motion.
+		var hit := get_world_3d().direct_space_state.cast_motion(q)
+		if hit.size() == 2:
+			want = CAM_DISTANCE * hit[0]
 
 	# Snap in instantly when something intrudes, ease back out when it clears —
 	# a camera that lerps *into* a wall clips through it for a few frames.

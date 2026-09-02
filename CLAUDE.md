@@ -34,10 +34,56 @@ pixels-per-metre in 3D geometry; that idea only applies to texture density.
 
 ## Gotchas already paid for
 
-- Godot's `CharacterBody3D` will walk up a 45 degree ramp and then refuse a
-  10 cm step, because a riser is a vertical wall to the solver. `player.gd`
-  implements step-up manually in `_try_step()`.
-- The camera arm snaps in instantly and eases back out. Lerping *into* a wall
-  clips through it for a few frames.
 - `+Z` is behind a node in Godot; forward is `-Z`. The camera sits at
   `Vector3(0, 0, _arm)` for that reason.
+
+### Blender to Godot
+
+- **Godot deletes dots from animation names.** The glTF importer runs them
+  through `validate_node_name()`, which strips the characters illegal in node
+  names. `attack.thrust` arrives as `attackthrust`. It fails *selectively* —
+  `idle` and `walk` are fine, so the rig looks healthy and only the dotted
+  clips vanish. `AnimPick` normalises both sides now; keep using dots.
+- **An unapplied Object Mode scale on an armature shrinks everything
+  socketed to it.** The character still looks right, because its meshes are
+  children of that armature. A weapon is not. Cost most of a day: `Ctrl+A →
+  All Transforms` on the armature *and* its meshes. `Socket.make()` warns
+  when a skeleton arrives carrying a scale.
+- **An unrecognised collision suffix fails completely silently.** `-con`
+  instead of `-col` imports the mesh perfectly and gives you no collider,
+  with nothing in the log. Only `-col`, `-convcol`, `-colonly` and
+  `-convcolonly` are real. `world.gd` `_piece()` now warns on a piece that
+  arrives with no `StaticBody3D`.
+- **`-convcol` fills in any hole.** A convex hull of a broken wall is a solid
+  block. Anything with a gap in it wants `-col`.
+
+### Controller
+
+- Godot's `CharacterBody3D` will walk up a 45 degree ramp and then refuse a
+  10 cm step, because a riser is a vertical wall to the solver. `player.gd`
+  implements step-up manually in `_try_step()`, and every part of it was paid
+  for separately:
+  - Lift only as far as the tread actually is, never the full `STEP_HEIGHT`.
+  - Probe over a **fixed** distance, never one frame of travel — a frame is
+    5 cm at a walk and below the physics margin at a crawl, so the collision
+    test stops giving a stable answer and the climb stutters.
+  - **Commit** the step. Floor snapping otherwise finds the lower ground
+    still under you and undoes the lift the same frame, so you buzz against
+    a step instead of climbing it.
+  - Rate-limit the climb, or a tall riser is a bigger jolt than a short one.
+  - Hold the camera *and the model* back and ease them in. Smoothing the
+    camera alone just detaches it from a character that is still popping.
+- **The camera collision is a shape cast, not a ray.** A ray is infinitely
+  thin and slides through the gap between two wall segments, leaving the
+  camera parked inside the wall beside it. It also masks `Layers.WORLD` only
+  — an enemy walking behind you must never shove the view into the back of
+  your own head.
+- The camera arm snaps in instantly and eases back out. Lerping *into* a wall
+  clips through it for a few frames.
+
+### Physics layers
+
+`Layers` (`scripts/layers.gd`) is a contract, not a convenience: `WORLD`,
+`CHARACTER`, `DEBRIS`. It exists so the camera can collide with the world
+alone. Getting a mask wrong fails quietly — a blade whose mask drops
+`CHARACTER` simply stops hitting things, with no error.

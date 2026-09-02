@@ -25,7 +25,7 @@ sandbox already has:
 |---|---|
 | Third-person camera | spring arm with wall pull-in, `C` toggles first person |
 | Movement | camera-relative, acceleration + friction, sprint, jump |
-| Stairs | manual step-up, `STEP_HEIGHT` 0.45 m |
+| Stairs | manual step-up, `STEP_HEIGHT` 0.28 m — the 40 cm band needs a jump |
 | Animation | idle / walk / run / jump, optional fall / land |
 | Model loading | drop a `.blend` in `assets/blender/`, it appears |
 | Diagnostics | plinth captions report clips, rigs, mesh and vert counts |
@@ -33,11 +33,13 @@ sandbox already has:
 | Attacks | `attack.thrust` on left click, `attack.chop` on right |
 | Enemy | `bug.gd` — walks at you, wears its shell on `shell.socket` |
 | Hit detection | blade `Area3D` sized off the weapon mesh, `hurt()` on the target |
+| Hit feedback | flash, knockback, hitstop |
+| The shell | comes off on the second hit, splits, and clatters away as physics |
+| Scenery | trees and rocks scattered as MultiMeshes, one draw call each |
+| Structures | a shelter band at `z -42` — walls, a doorway, collision from Blender |
 
-Not built yet, and needed for M2:
-
-- The shell coming off — reparent it onto a `RigidBody3D`
-- Hit feedback: flash, knockback, hitstop
+**Every M2 system is now built.** What is left is not construction, it is the
+gate at the bottom of this document.
 
 **Resolved 2026-09-01.** Tim's armature was carrying an unapplied
 `scale 0.2106`, and the sword had a matching 1.8× inflation baked in to cancel
