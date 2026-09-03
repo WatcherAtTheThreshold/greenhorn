@@ -37,9 +37,12 @@ sandbox already has:
 | The shell | comes off on the second hit, splits, and clatters away as physics |
 | Scenery | trees and rocks scattered as MultiMeshes, one draw call each |
 | Structures | a shelter band at `z -42` — walls, a doorway, collision from Blender |
+| The bite | bug3 rears, opens its mandibles, and bites — frames 12–18 of 24 |
+| Mortality | Tim has health, a `hit` clip, a `death` clip, and the plot rebuilds |
+| Two species | bug3 bites; bug2 has no `attack` clip and simply follows you |
 
-**Every M2 system is now built.** What is left is not construction, it is the
-gate at the bottom of this document.
+**Every M2 system is built, and the fight has been won and lost.** What is
+left is not construction, it is the gate at the bottom of this document.
 
 **Resolved 2026-09-01.** Tim's armature was carrying an unapplied
 `scale 0.2106`, and the sword had a matching 1.8× inflation baked in to cancel
@@ -352,13 +355,17 @@ Selected Objects* (which produced a 132-byte empty file). See
 
 ## Done when
 
-- [ ] Tim is rigged, with socket bones, exported clean
-- [ ] A weapon appears in his hand and follows it through the swing
-- [ ] One bug walks toward the player
-- [ ] Attacking connects — hit detection works
-- [ ] The shell comes off, visibly, and it feels good
-- [ ] The bug dies
-- [ ] Hit feedback exists: flash, knockback, hitstop
+- [x] Tim is rigged, with socket bones, exported clean
+- [x] A weapon appears in his hand and follows it through the swing
+- [x] One bug walks toward the player
+- [x] Attacking connects — hit detection works
+- [x] The shell comes off, visibly, and it feels good
+- [x] The bug dies
+- [x] Hit feedback exists: flash, knockback, hitstop
+
+Beyond the list, because the outline's M2 asked for it and the stage doc
+deferred it: **the bug bites back, and it can kill you.** Six beetles, two
+species, and the first fight took three attempts to win.
 
 And then the actual gate, which is not a checkbox:
 
@@ -366,6 +373,38 @@ And then the actual gate, which is not a checkbox:
 
 If yes, M3 and the outline are the plan. If no, the interesting version of
 this game is somewhere else and it is worth finding out now.
+
+### What M2 actually answered — 2026-09-02
+
+**Yes.** Not as a decision, but by observation: the fight got played
+repeatedly, lost twice, tuned, and played again. That is the answer the gate
+was asking for, and it did not need arguing about.
+
+Three things the build turned up that no amount of planning would have:
+
+**The shelter doorway became a bottleneck on its own.** It was built to test
+the camera. It turned out to change how a fight goes, because a mixed group
+has to funnel through it. Arena geometry is a combat system, not decoration —
+worth knowing before M3 designs a room.
+
+**A harmless enemy reads completely differently from a dangerous one.** The
+build where the bug could walk at you but neither of you could attack read as
+a *follower pet*, not an enemy, and that is now open question 5. bug2 still
+has no `attack` clip, so it still reads that way standing next to one that
+bites — which is the pacifist species from the story doc, arrived at through
+asset availability rather than design.
+
+**Feedback beat animation, exactly as predicted.** Flash, knockback and
+hitstop were built before any hit-reaction clip existed and carried the whole
+fight on their own. The clips came later and improved it; they were never
+what made it land. *Do not animate a hit reaction yet* was right.
+
+**The sword's reach reads as accurate, and it was never tuned.** The blade
+sliding past a beetle misses; anything that enters its body connects. That
+came out of measuring the hitbox off the weapon mesh rather than typing in a
+range — the hitbox *is* the blade, so there is no approximation to be
+generous or stingy about. Two swings' worth of numbers were guessed on day
+one and have survived every playtest since.
 
 ---
 
@@ -378,8 +417,41 @@ Answer as they come up; add to this list rather than starting a new one.
 2. **Does the shell break in one hit, or take several?** One is simpler and
    answers the question. Several is probably the better game.
 3. **Melee or ranged first?** Melee tests the socket and the shell in one go.
-4. **How does the bug telegraph?** Nothing to answer yet — it does not
-   attack in M2 — but it is the next question after.
+   *Answered by building it: melee, and it works.*
+6. **Does melee want aim assist?** Raised 2026-09-02, from the swing feeling
+   right without any. It currently connects on geometry alone — no snapping,
+   no widened arc, no forgiveness cone. That reads as precise rather than
+   fussy against a slow beetle you can circle.
+
+   The question is whether it survives contact with faster enemies, several
+   at once, or a controller. Assist is easy to add later and very hard to
+   remove once players are used to it, so the burden of proof is on adding
+   it — and the current answer is *not yet, and possibly never*.
+4. **How does the bug telegraph?** *Answered 2026-09-02.* It rears up, lifts
+   its legs and antennae, and opens its mandibles wide. The jaws close on
+   frames 12–18 of a 24-frame clip, so **half the animation is wind-up** —
+   about 0.4 seconds of warning at 30 fps.
+
+   Three things make that warning mean something, and all three are code
+   rather than animation:
+
+   - **Range is checked once, at commit.** The beetle bites where you *were*,
+     so backing off during the wind-up is a real answer rather than a delay.
+     `BITE_REACH` is deliberately shorter than `BITE_RANGE` — that gap is the
+     step you can take.
+   - **It turns to face you at commit.** A telegraph you cannot see the front
+     of is not a telegraph.
+   - **A hit cancels a bite in progress.** Otherwise you can read the tell,
+     land a clean chop, and get bitten anyway — which teaches the player that
+     reading the tell does not work.
+
+   The open question underneath is now a *tuning* one, not a design one: the
+   length of that wind-up decides whether this game is about reaction or about
+   spacing. It is currently long enough to be about spacing.
+
+   Worth revisiting once the shell means something mechanically: **an
+   armoured beetle that cannot be interrupted until you have cracked it** is
+   the same system doing thematic work, and it is a one-line change.
 5. **Is there a non-combat game in here?** *Noticed 2026-09-01, from the
    build rather than from thinking about it.* For the one session where the
    bug could walk at you but neither of you could attack, it did not read as

@@ -20,11 +20,11 @@ const GRAVITY     := 18.0   ## matches the player, so falls read the same
 const STOP_RANGE  := 1.2    ## metres. It has no attack, so it stops short
 
 # --- body -------------------------------------------------------------------
-## The collision capsule, not the model. Measured off bug2.blend: roughly a
-## metre long, half a metre wide, 0.69 tall. A capsule is a poor fit for
-## something this flat, but it will not catch on the plot's stair nosings the
-## way a box would, and being able to walk it up the test stairs is worth more
-## than a snug fit right now.
+## The collision capsule, not the model. bug3 measures 1.14 m wide, 1.38 long
+## and only 0.49 tall, so this is deliberately smaller than the beetle looks —
+## a capsule is a poor fit for something that flat, and one sized to the legs
+## would stop you well before you could see yourself reach it. It also will
+## not catch on the plot's stair nosings the way a box would.
 const BODY_RADIUS := 0.32
 const BODY_HEIGHT := 0.7
 
@@ -57,12 +57,43 @@ const SHELL_POP    := 3.0
 const SHELL_LIFT   := 4.0
 const SHELL_SPREAD := 2.0
 
-const SHELL_BONE := "shell.socket"
+# --- biting -----------------------------------------------------------------
+## Where in the `attack` clip the mandibles are actually closing, as fractions
+## of it. Measured, not guessed: the clip is 24 frames and the bite runs 12 to
+## 18 — jaws open at 12, shut at 18.
+##
+## Everything before BITE_FROM is the telegraph: the rear-up, the legs and
+## antennae lifting, the jaws opening wide. That half-second is the whole
+## fight. Shorten it and this becomes a reaction test you lose by luck;
+## lengthen it and the bite is free to walk away from.
+const BITE_FROM     := 0.5
+const BITE_TO       := 0.75
+const BITE_DAMAGE   := 1
+## How close it has to be to start. Comfortably beyond STOP_RANGE, so it
+## commits from where it stands rather than shuffling into contact first.
+const BITE_RANGE    := 1.9
+## How far the jaws actually reach when they close. Shorter than BITE_RANGE on
+## purpose — back off during the telegraph and the bite misses, which is what
+## makes the telegraph worth reading.
+const BITE_REACH    := 1.5
+## Seconds between attempts, on top of the clip itself.
+const BITE_COOLDOWN := 1.1
 
-@export var model_file := "bug2.blend"
-## The carapace. Never skinned, never rigged — it rides SHELL_BONE. Breaking
-## it later means reparenting _shell onto a RigidBody3D and letting go.
-@export var shell_file := "shell.blend"
+
+@export var model_file := "bug3.blend"
+## The carapace. Never skinned, never rigged — it rides SHELL_BONE, and
+## breaking it reparents _shell onto a RigidBody3D.
+##
+## Two objects in one file, so it breaks into two halves that part company.
+@export var shell_file := "shell2.blend"
+## The bone that carapace rides. Per-instance rather than a const, because two
+## species with different rigs stand on the plot at once: bug2 calls it
+## `shell.socket`, bug3 `shell2.socket`.
+##
+## Naming a bone after the *file* rather than the part means every new shell
+## version drags a bone rename with it, and rigs are the expensive thing to
+## change. Worth settling on `shell.socket` when bug3 is next open.
+@export var shell_bone := "shell2.socket"
 
 ## Who to walk at. world.gd hands us the player. Without one the bug just
 ## stands there idling, which is a perfectly good way to look at it.
@@ -75,6 +106,11 @@ var _clip_idle := ""
 var _clip_walk := ""
 var _clip_death := ""
 var _clip_hit := ""
+var _clip_attack := ""
+var _bite_left := 0.0       ## seconds of the attack clip still to run
+var _bite_len := 0.0
+var _bite_wait := 0.0       ## cooldown before it may try again
+var _bit := false           ## this bite has already landed
 var _dead := false
 var _health := MAX_HEALTH
 var _flash_left := 0.0
@@ -121,10 +157,11 @@ func _mount_model() -> void:
 	_clip_death = AnimPick.find(_anim, "death")
 	# Optional. Make an action called `hit` in Blender and it plays on impact;
 	# without one the flash and the shove carry it on their own.
-	_clip_hit   = AnimPick.find(_anim, "hit")
+	_clip_hit    = AnimPick.find(_anim, "hit")
+	_clip_attack = AnimPick.find(_anim, "attack")
 	for cycle: String in [_clip_idle, _clip_walk]:
 		AnimPick.loop(_anim, cycle)
-	for once: String in [_clip_death, _clip_hit]:
+	for once: String in [_clip_death, _clip_hit, _clip_attack]:
 		AnimPick.set_loop(_anim, once, false)      # dying twice is worse value
 	if _clip_death == "":
 		push_warning("greenhorn: bug has no death clip. It has: %s"
@@ -134,7 +171,7 @@ func _mount_model() -> void:
 func _wear_shell() -> void:
 	if _model == null:
 		return
-	_shell = Socket.equip(_model, shell_file, SHELL_BONE)
+	_shell = Socket.equip(_model, shell_file, shell_bone)
 	_collect_meshes()
 
 
@@ -161,10 +198,14 @@ func _physics_process(delta: float) -> void:
 	if _hit_left > 0.0:
 		_hit_left -= delta
 
+	if _bite_wait > 0.0:
+		_bite_wait -= delta
+	_bite(delta)
+
 	# Steer flat. Chasing the player's actual position would make it try to
 	# climb you when you stand on a plinth.
 	var wish := Vector3.ZERO
-	if target != null and not _dead and _hit_left <= 0.0:
+	if target != null and not _dead and _hit_left <= 0.0 and _bite_left <= 0.0:
 		var to := target.global_position - global_position
 		to.y = 0.0
 		if to.length() > STOP_RANGE:
@@ -186,10 +227,54 @@ func _physics_process(delta: float) -> void:
 	_animate()
 
 
+## Commit to a bite, run it, and land it if the jaws close on anything.
+##
+## Range is checked once, at the start. After that the beetle is committed —
+## it does not track you through the swing, so backing off during the
+## telegraph is a real answer rather than a delay. That is the whole reason
+## the wind-up exists.
+func _bite(delta: float) -> void:
+	if _dead or target == null or _clip_attack == "" or _anim == null:
+		return
+
+	if _bite_left > 0.0:
+		var was := _bite_left
+		_bite_left -= delta
+		# Land it once, the first frame inside the window the jaws are closing.
+		var t := 1.0 - (was / _bite_len)
+		if not _bit and t >= BITE_FROM and t <= BITE_TO:
+			var flat := target.global_position - global_position
+			flat.y = 0.0
+			if flat.length() <= BITE_REACH and target.has_method("hurt"):
+				_bit = true
+				target.hurt(BITE_DAMAGE, global_position)
+		return
+
+	if _bite_wait > 0.0 or _hit_left > 0.0:
+		return
+	var gap := target.global_position - global_position
+	gap.y = 0.0
+	if gap.length() > BITE_RANGE:
+		return
+
+	var a := _anim.get_animation(_clip_attack)
+	if a == null:
+		return
+	_bite_len = a.length
+	_bite_left = a.length
+	_bite_wait = a.length + BITE_COOLDOWN
+	_bit = false
+	# Face what it is about to bite. A telegraph you cannot see the front of
+	# is not a telegraph.
+	rotation.y = atan2(-gap.x, -gap.z)
+	_anim.play(_clip_attack)
+	_anim.seek(0.0, true)
+
+
 func _animate() -> void:
-	# Hold the hit clip, or the walk stamps on it the very next frame and you
-	# never see it — the same trap the player's swings and landings have.
-	if _anim == null or _dead or _hit_left > 0.0:
+	# Hold the hit and attack clips, or the walk stamps on them the very next
+	# frame — the same trap the player's swings and landings have.
+	if _anim == null or _dead or _hit_left > 0.0 or _bite_left > 0.0:
 		return
 	var planar := Vector3(velocity.x, 0.0, velocity.z).length()
 	var clip := _clip_walk if planar > 0.15 else _clip_idle
@@ -218,6 +303,16 @@ func hurt(amount: int, from: Vector3) -> void:
 	away.y = 0.0
 	if away.length() > 0.001:
 		velocity += away.normalized() * KNOCKBACK
+
+	# A hit cancels a bite in progress. Without this you can watch the jaws
+	# open, land a clean chop, and still get bitten — which teaches the player
+	# that reading the telegraph does not work.
+	#
+	# Worth revisiting once the shell means something: an armoured beetle that
+	# cannot be interrupted until you have cracked it is the same mechanic
+	# doing thematic work.
+	_bite_left = 0.0
+	_bit = false
 
 	# Stop steering for a moment, or it walks straight back into you and the
 	# shove never reads at all.

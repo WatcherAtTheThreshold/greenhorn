@@ -24,7 +24,17 @@ const BUG_SPAWN  := Vector3(9.0, 0.4, 4.0)
 ## More than one, because everything about the fight has so far been tuned
 ## against a single target. A swing that sweeps through two of them is the
 ## first honest test of the hit window, the cancel window and the knockback.
-const BUG_COUNT  := 4
+const BUG_COUNT  := 6
+## The roster: a model, its carapace, and the bone that carapace rides. Spawns
+## cycle through it, so two species arrive mixed rather than in blocks.
+##
+## bug2 has no `attack` clip, so it cannot bite — everything degrades, and it
+## simply walks at you while bug3 does the damage. That is the pacifist
+## species from the story doc, arrived at by accident rather than by design.
+const BUG_KINDS := [
+	{"model": "bug3.blend", "shell": "shell2.blend", "bone": "shell2.socket"},
+	{"model": "bug2.blend", "shell": "shell.blend",  "bone": "shell.socket"},
+]
 ## Ring radius at spawn. Far enough apart that they do not start inside each
 ## other; close enough that they arrive as a group rather than a queue.
 const BUG_SPREAD := 2.4
@@ -86,8 +96,12 @@ func _ready() -> void:
 	# scenery is seeded.
 	for i in BUG_COUNT:
 		var a := TAU * float(i) / float(BUG_COUNT)
+		var kind: Dictionary = BUG_KINDS[i % BUG_KINDS.size()]
 		var b := Bug.new()
 		b.name = "Bug%d" % i
+		b.model_file = kind["model"]
+		b.shell_file = kind["shell"]
+		b.shell_bone = kind["bone"]
 		b.position = BUG_SPAWN + Vector3(cos(a), 0.0, sin(a)) * BUG_SPREAD
 		# Handing each one the player directly beats a group lookup: the world
 		# already holds both, and there is nothing to go stale.

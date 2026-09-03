@@ -116,10 +116,19 @@ const ATTACK_CANCEL := 0.75
 ## motion should connect, not the poses held at either end, or the sword reads
 ## as damaging things by resting against them.
 ##
-## These two are a guess. The importer samples every frame, so the export
-## cannot tell me where in your clip the fast part actually is — deliberately
-## wide, so it fails by connecting too easily rather than by looking broken.
-## Watch where the hit lands and narrow it.
+## These started as a deliberately wide guess, because the importer samples
+## every frame and the export cannot say where in a clip the fast part is.
+##
+## **Played and kept, 2026-09-02.** The blade sliding past a beetle misses;
+## anything that actually enters its body connects. That reads as accurate
+## rather than generous, and it is worth understanding why: the hitbox is
+## measured off the weapon mesh itself, so it *is* the blade — there is no
+## approximation to be forgiving or stingy about. Widening these would start
+## connecting on the held poses at either end, which reads as the sword
+## damaging things by resting against them.
+##
+## No aim assist, deliberately. Whether melee wants some is an open question,
+## not an omission — see m2-first-fight.md.
 const HIT_FROM   := 0.1
 const HIT_TO     := 0.7
 const HIT_DAMAGE := 1
@@ -130,6 +139,22 @@ const HIT_DAMAGE := 1
 ## zero, because a dead-stopped frame reads as a stutter rather than a hit.
 const HITSTOP_TIME  := 0.06
 const HITSTOP_SCALE := 0.05
+
+# --- being hit --------------------------------------------------------------
+## Bites you survive. Low on purpose: the question a fight has to answer is
+## whether you are willing to commit to a swing, and that only means something
+## if being wrong is expensive.
+const MAX_HEALTH   := 5
+## The same feedback trio that goes out, coming back in. A flash you can see
+## from behind your own shoulder, a shove that interrupts what you were doing,
+## and the hitstop already used for landing blows.
+const HURT_FLASH   := 0.08
+const HURT_SHOVE   := 5.0
+## Seconds of stagger when there is no `hit` clip. With one, its own length
+## wins — the same contract the swings use.
+const HURT_HOLD    := 0.3
+## How long the corpse lies there before the plot rebuilds itself.
+const DEATH_HOLD   := 1.6
 
 ## Which model to wear. Three ways, in priority order:
 ##   1. character_scene, if you set it in the inspector
@@ -174,6 +199,14 @@ var _clip_fall := ""
 var _clip_land := ""
 var _clip_thrust := ""
 var _clip_chop := ""
+var _clip_hurt := ""
+var _clip_death := ""
+var _health := MAX_HEALTH
+var _hurt_left := 0.0        ## staggered: no input, so the shove reads
+var _flash_left := 0.0
+var _dead := false
+var _meshes: Array[MeshInstance3D] = []
+var _flash_mat: StandardMaterial3D = null
 var _attack := ""          ## clip currently swinging, "" when not attacking
 var _attack_left := 0.0    ## seconds of it still to play
 var _attack_len := 0.0     ## its full length, for the cancel window
@@ -229,6 +262,10 @@ func _ready() -> void:
 		# happens to be longer — the two buttons would do the same thing.
 		_clip_thrust = AnimPick.find(_anim, "attack.thrust")
 		_clip_chop   = AnimPick.find(_anim, "attack.chop")
+		_clip_hurt   = AnimPick.find(_anim, "hit")
+		_clip_death  = AnimPick.find(_anim, "death")
+		AnimPick.set_loop(_anim, _clip_hurt, false)
+		AnimPick.set_loop(_anim, _clip_death, false)
 		# A swing that resolves to "" is silent — the button does nothing at
 		# all and there is nothing on screen to tell you why. Say so, and say
 		# what the model actually brought, which is usually the whole answer.
@@ -249,6 +286,9 @@ func _ready() -> void:
 	for part in HEAD_PARTS:
 		for c in body.find_children(part, "VisualInstance3D", true, false):
 			_head_parts.append(c as Node3D)
+
+	for c in body.find_children("*", "MeshInstance3D", true, false):
+		_meshes.append(c as MeshInstance3D)
 
 	_blade = _build_blade(Socket.equip(body, weapon_file, WEAPON_BONE))
 
@@ -361,10 +401,72 @@ func _hitstop() -> void:
 	_stopping = false
 
 
+## Take a bite. Same signature the bugs answer to, so nothing needs to know
+## which way round a fight is pointed.
+func hurt(amount: int, from: Vector3) -> void:
+	if _dead:
+		return
+	_health -= amount
+
+	_flash_left = HURT_FLASH
+	_set_flash(true)
+
+	# Shove, flat. Vertical knockback on the player is worse than on a bug —
+	# it takes away your footing and the ground under you decides where you
+	# land, which reads as the game taking the controls off you.
+	var away := global_position - from
+	away.y = 0.0
+	if away.length() > 0.001:
+		velocity += away.normalized() * HURT_SHOVE
+
+	# A bite interrupts a swing. That is the entire reason to care about
+	# ATTACK_CANCEL — committing to a chop is only a decision if something can
+	# punish you for it.
+	_attack = ""
+	_hurt_left = HURT_HOLD
+	if _clip_hurt != "" and _anim != null:
+		var a := _anim.get_animation(_clip_hurt)
+		if a != null:
+			_hurt_left = a.length
+		_play(_clip_hurt, true)
+
+	_hitstop()
+
+	if _health <= 0:
+		die(from)
+
+
+## Stop, fall over, and let the world put itself back.
+func die(from: Vector3) -> void:
+	if _dead:
+		return
+	_dead = true
+	_hurt_left = 0.0
+	velocity = Vector3.ZERO
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if _clip_death != "" and _anim != null:
+		_play(_clip_death, true)
+	# Reload rather than respawn: a run that ends should end. R does the same
+	# thing on demand, and world.gd owns it for the same reason.
+	await get_tree().create_timer(DEATH_HOLD).timeout
+	if is_inside_tree():
+		Engine.time_scale = 1.0
+		get_tree().reload_current_scene()
+
+
+func _set_flash(on: bool) -> void:
+	if on and _flash_mat == null:
+		_flash_mat = Palette.unshaded(Palette.HIT_FLASH)
+	for mi in _meshes:
+		mi.material_override = _flash_mat if on else null
+
+
 ## Start a swing. Silently does nothing if the model has no such clip, so a
 ## rig with only a thrust still works on left click and right click is simply
 ## inert rather than an error.
 func _swing(clip: String) -> void:
+	if _dead or _hurt_left > 0.0:
+		return
 	if _anim == null or clip == "":
 		return
 	var a := _anim.get_animation(clip)
@@ -416,7 +518,9 @@ func _physics_process(delta: float) -> void:
 
 func _move(delta: float) -> void:
 	# --- input, rotated into camera space so "forward" means "away from me" ---
-	var raw := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var raw := Vector2.ZERO
+	if not _dead and _hurt_left <= 0.0:
+		raw = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var wish := Vector3.ZERO
 	if raw != Vector2.ZERO:
 		var basis_yaw := Basis(Vector3.UP, _yaw)
@@ -616,6 +720,20 @@ const LAND_HOLD := 0.22   ## seconds the landing clip is protected for
 func _animate(delta: float) -> void:
 	if _anim == null:
 		return
+
+	# Death outranks everything and never releases.
+	if _dead:
+		return
+	# Being bitten outranks a swing, which outranks locomotion. Without the
+	# hold the walk stamps on the hit clip the frame after it starts.
+	if _flash_left > 0.0:
+		_flash_left -= delta
+		if _flash_left <= 0.0:
+			_set_flash(false)
+	if _hurt_left > 0.0:
+		_hurt_left -= delta
+		if _hurt_left > 0.0:
+			return
 	# Mid-step we are off the floor by construction, so without this a stair
 	# climb plays as a jump.
 	var grounded := is_on_floor() or _stepping > 0.0
