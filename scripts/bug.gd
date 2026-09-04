@@ -113,7 +113,7 @@ const BITE_COOLDOWN := 1.1
 ## breaking it reparents _shell onto a RigidBody3D.
 ##
 ## Two objects in one file, so it breaks into two halves that part company.
-@export var shell_file := "shell2.blend"
+@export var shell_file := "props/shell2.blend"
 ## The bone that carapace rides. Per-instance rather than a const, because two
 ## species with different rigs stand on the plot at once: bug2 calls it
 ## `shell.socket`, bug3 `shell2.socket`.

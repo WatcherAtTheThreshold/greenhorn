@@ -44,7 +44,7 @@ const PLAYER := preload("res://scenes/player.tscn")
 ## walk between. The gaps are deliberate: a gap is better than a wall for the
 ## camera, which is the whole reason the arm sweep is a sphere now.
 const STONE_SPACING := 2.9
-const PILLAR_FILE   := "pillar.blend"
+const PILLAR_FILE   := "scenery/pillar.blend"
 
 # --- waves ------------------------------------------------------------------
 ## Seconds between clearing a wave and the next one arriving. Long enough to
@@ -68,7 +68,7 @@ const BOSS_BITE       := 2     ## the player has five, so three bites end it
 const BOSS_SPEED      := 1.2   ## slower than the small ones, and it has to be
 
 ## The prize, and it is the title: a robot wearing beetle jaws on its head.
-const TROPHY_FILE := "mandibles.blend"
+const TROPHY_FILE := "props/mandibles.blend"
 const TROPHY_BONE := "mount.head"
 
 # --- the run: rooms and the ground between them --------------------------
@@ -141,8 +141,8 @@ const BUG_COUNT  := 6
 ## simply walks at you while bug3 does the damage. That is the pacifist
 ## species from the story doc, arrived at by accident rather than by design.
 const BUG_KINDS := [
-	{"model": "bug3.blend", "shell": "shell2.blend", "bone": "shell2.socket"},
-	{"model": "bug2.blend", "shell": "shell.blend",  "bone": "shell.socket"},
+	{"model": "bug3.blend", "shell": "props/shell2.blend", "bone": "shell2.socket"},
+	{"model": "bug2.blend", "shell": "props/shell.blend",  "bone": "shell.socket"},
 ]
 ## Ring radius at spawn. Far enough apart that they do not start inside each
 ## other; close enough that they arrive as a group rather than a queue.
@@ -164,17 +164,17 @@ const PLINTH_Z   := 0.0
 const SHELTER_Z    := -42.0
 const SHELTER_HALF := 3.0
 const MODULE       := 2.0        ## the grid the wall pieces are built to
-const WALL_FILE    := "wall.blend"
-const BROKEN_FILE  := "wall-broken.blend"
-const DOOR_FILE    := "door.blend"
+const WALL_FILE    := "build/wall.blend"
+const BROKEN_FILE  := "build/wall-broken.blend"
+const DOOR_FILE    := "build/door.blend"
 
 # --- scenery ----------------------------------------------------------------
 ## Scattered as MultiMeshes: any number of instances, one draw call each.
 ## Godot does not batch MeshInstance3Ds, so placing 34 trees the obvious way
 ## costs 34 draw calls before a single bug is on screen — and trees are the
 ## thing there will eventually be hundreds of.
-const TREE_FILE  := "tree1.blend"
-const ROCK_FILE  := "rock1.blend"
+const TREE_FILE  := "scenery/tree1.blend"
+const ROCK_FILE  := "scenery/rock1.blend"
 const TREE_COUNT := 34
 const ROCK_COUNT := 22
 ## A tree's collision is a trunk-sized column, not its bounds. The canopy is
@@ -396,7 +396,7 @@ func _spawn_boss(at: Vector3) -> void:
 	var b := Bug.new()
 	b.name = "Boss"
 	b.model_file = "bug3.blend"
-	b.shell_file = "shell2.blend"
+	b.shell_file = "props/shell2.blend"
 	b.shell_bone = "shell2.socket"
 	b.size = BOSS_SIZE
 	b.max_health = BOSS_HEALTH
@@ -620,7 +620,7 @@ func _label(text: String, pos: Vector3, size := 44, col := Palette.ACCENT) -> La
 	l.position = pos
 	l.modulate = col
 	l.outline_size = 14
-	l.outline_modulate = Color(0.06, 0.09, 0.07, 0.9)
+	l.outline_modulate = Palette.INK
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.double_sided = true
 	add_child(l)
@@ -936,17 +936,7 @@ func _scatter(file: String, xforms: Array[Transform3D], label: String, tall: boo
 # --- whatever you dropped in ------------------------------------------------
 func _mount_imports() -> void:
 	var names: Array[String] = []
-	var dir := DirAccess.open(IMPORT_DIR)
-	if dir:
-		dir.list_dir_begin()
-		var f := dir.get_next()
-		while f != "":
-			if not dir.current_is_dir():
-				var ext := f.get_extension().to_lower()
-				if ext == "blend" or ext == "glb" or ext == "gltf":
-					names.append(f)
-			f = dir.get_next()
-		dir.list_dir_end()
+	_gather_models("", names)
 	names.sort()
 
 	if names.is_empty():
@@ -986,7 +976,10 @@ func _mount_imports() -> void:
 		# A 1.7 m character on a 0.3 m plinth put its head exactly where a
 		# fixed 2 m label was, and wore the caption like a hat.
 		var top: float = maxf(_visual_top(holder), holder.global_position.y + 0.4)
-		_label(names[i], Vector3(px, top + 0.62, PLINTH_Z), 32, Palette.STONE_LIGHT)
+		# Filename only. The folder is how it is organised, not what it is, and
+		# the caption has two more lines under it competing for the same space.
+		_label(names[i].get_file(), Vector3(px, top + 0.62, PLINTH_Z), 32,
+			Palette.STONE_LIGHT)
 		_label(note, Vector3(px, top + 0.36, PLINTH_Z), 24, Palette.ACCENT)
 		_label(_census(holder), Vector3(px, top + 0.14, PLINTH_Z), 22, Palette.STONE_LIGHT)
 
@@ -995,6 +988,33 @@ func _mount_imports() -> void:
 	_box(Vector3.ONE, Transform3D(Basis(), Vector3(refx, 0.5, PLINTH_Z)),
 		Palette.solid(Palette.STONE_LIGHT, 0.9))
 	_label("1 m", Vector3(refx, 1.4, PLINTH_Z), 32)
+
+
+## Every model under assets/blender/, subfolders included, as paths relative
+## to it — so `props/sword1.blend` comes back ready to hand to `load()`.
+##
+## Recursive on purpose. Organising assets into folders should not quietly
+## drop them off the plinth row: the captions are the only place that reports
+## rig count, clip names and vertex totals, and that diagnostic is worth more
+## than a tidy row.
+##
+## `alt-blend-files` is skipped. It is the archive, not the project.
+func _gather_models(sub: String, into: Array[String]) -> void:
+	var dir := DirAccess.open(IMPORT_DIR + sub)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var f := dir.get_next()
+	while f != "":
+		if dir.current_is_dir():
+			if not f.begins_with(".") and f != "alt-blend-files":
+				_gather_models(sub + f + "/", into)
+		else:
+			var ext := f.get_extension().to_lower()
+			if ext == "blend" or ext == "glb" or ext == "gltf":
+				into.append(sub + f)
+		f = dir.get_next()
+	dir.list_dir_end()
 
 
 ## Highest point of any geometry under a node, in world space. Used to park a

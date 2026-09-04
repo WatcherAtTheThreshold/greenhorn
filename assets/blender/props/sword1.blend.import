@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://b37eajygedcrq"
-path="res://.godot/imported/wall.blend-acee14196a5e1a3ccf5372e7d807b547.scn"
+uid="uid://dx344vewpmjti"
+path="res://.godot/imported/sword1.blend-61a1d0c71ed8b8ab5fafa1c761fd0dff.scn"
 
 [deps]
 
-source_file="res://assets/blender/wall.blend"
-dest_files=["res://.godot/imported/wall.blend-acee14196a5e1a3ccf5372e7d807b547.scn"]
+source_file="res://assets/blender/props/sword1.blend"
+dest_files=["res://.godot/imported/sword1.blend-61a1d0c71ed8b8ab5fafa1c761fd0dff.scn"]
 
 [params]
 

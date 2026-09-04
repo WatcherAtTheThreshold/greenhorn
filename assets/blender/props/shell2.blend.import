@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://6bv570lo6vqm"
-path="res://.godot/imported/mandibles.blend-f50f5b1c42e500c338df83b1857e62cd.scn"
+uid="uid://cnhotsaolt0m7"
+path="res://.godot/imported/shell2.blend-e7eff5c5c32362ef8fcbe2e6c997f90e.scn"
 
 [deps]
 
-source_file="res://assets/blender/mandibles.blend"
-dest_files=["res://.godot/imported/mandibles.blend-f50f5b1c42e500c338df83b1857e62cd.scn"]
+source_file="res://assets/blender/props/shell2.blend"
+dest_files=["res://.godot/imported/shell2.blend-e7eff5c5c32362ef8fcbe2e6c997f90e.scn"]
 
 [params]
 

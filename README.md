@@ -58,8 +58,10 @@ in `.godot/` — orphan it and Godot happily goes on rendering a file you
 deleted, which is very hard to diagnose from the inside.
 
 Better still: **pick a filename and save over it.** Every rename mints a new
-UID and orphans every reference to the old name. Nothing in this project
-references your assets by name any more, so overwriting in place is free.
+UID and orphans every reference to the old name. Fourteen places in `scripts/`
+do reference assets by path string, so overwriting in place is free and
+renaming is not. No `.tscn` references an asset at all, which is why moving a
+file into a subfolder only costs you those strings.
 
 ## What is out there
 
@@ -113,7 +115,11 @@ scripts/bug.gd       the beetle: walks at you, wears a breakable shell
 scripts/socket.gd    hanging unrigged props off bones
 scripts/anim_pick.gd finding and driving imported animation clips
 scripts/layers.gd    physics layers, so the camera only sees the world
-assets/blender/      drop .blend files here
+assets/blender/      characters + the palette, flat
+  props/             held and worn: weapons, shells, trophies
+  scenery/           scattered: trees, rocks, standing stones
+  build/             the wall kit: wall, broken wall, doorway
+  alt-blend-files/   archive; skipped by the plinth row
 ```
 
 The world is built in code rather than authored as a scene, so changing it is

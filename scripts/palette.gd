@@ -29,6 +29,11 @@ const GND_BOTTOM   := Color("6d7355")
 const SUNLIGHT     := Color("fff2d6")
 const FOG          := Color("bcd8e0")
 
+## The dark behind readable text — Label3D outlines and the hull readout. A
+## near-black with the world's green in it rather than a pure black, so text
+## sits in the scene instead of on top of it.
+const INK          := Color(0.06, 0.09, 0.07)
+
 
 ## A plain surface. Rough by default — a low roughness on an untextured
 ## primitive is most of what reads as "cheap plastic", so the default here

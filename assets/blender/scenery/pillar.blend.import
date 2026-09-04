@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://bwcul4pawf6lg"
-path="res://.godot/imported/pillar.blend-05483cb630ed2fc06a3b4859cd8b979c.scn"
+path="res://.godot/imported/pillar.blend-49946ff6fbaa6369c05f2f2ee50634cc.scn"
 
 [deps]
 
-source_file="res://assets/blender/pillar.blend"
-dest_files=["res://.godot/imported/pillar.blend-05483cb630ed2fc06a3b4859cd8b979c.scn"]
+source_file="res://assets/blender/scenery/pillar.blend"
+dest_files=["res://.godot/imported/pillar.blend-49946ff6fbaa6369c05f2f2ee50634cc.scn"]
 
 [params]
 

@@ -174,7 +174,7 @@ const DEATH_HOLD   := 1.6
 ## Which weapon to hold. Blank means empty-handed. The weapon is never skinned
 ## and never rigged — it hangs off WEAPON_BONE, so changing this one string
 ## swaps the weapon with no re-export and no scene edit.
-@export var weapon_file := "sword1.blend"
+@export var weapon_file := "props/sword1.blend"
 
 var _yaw := 0.0
 var _pitch := -0.15
@@ -207,6 +207,7 @@ var _flash_left := 0.0
 var _dead := false
 var _meshes: Array[MeshInstance3D] = []
 var _flash_mat: StandardMaterial3D = null
+var _hud: Label = null
 var _attack := ""          ## clip currently swinging, "" when not attacking
 var _attack_left := 0.0    ## seconds of it still to play
 var _attack_len := 0.0     ## its full length, for the cancel window
@@ -291,6 +292,7 @@ func _ready() -> void:
 		_meshes.append(c as MeshInstance3D)
 
 	_blade = _build_blade(Socket.equip(body, weapon_file, WEAPON_BONE))
+	_build_hud()
 
 
 ## Put something in Body, by whichever route is available.
@@ -303,6 +305,9 @@ func _adopt_model() -> void:
 		if c != placeholder and c is Node3D and (c as Node3D).visible:
 			return                      # already dragged in by hand
 
+	# Top level only, deliberately. Characters live flat in assets/blender/ and
+	# everything else lives in a subfolder, so this cannot accidentally dress
+	# you as a wall segment.
 	var dir := DirAccess.open(Socket.MODEL_DIR)
 	if dir == null:
 		return
@@ -407,6 +412,46 @@ func heal(n: int) -> void:
 	if _dead:
 		return
 	_health = mini(_health + n, MAX_HEALTH)
+	_show_hull()
+
+
+## A bare number, on purpose.
+##
+## This exists because the M4 gate — *did you ever push on when you should
+## have stopped?* — cannot be answered by a player who does not know how
+## hurt they are. That makes it a prerequisite rather than polish.
+##
+## Kept deliberately plain so it isolates the variable: if seeing `hull 2 / 5`
+## makes you detour to the shelter, the mechanic works and presentation is a
+## separate problem. If it does not, no amount of hearts would have fixed it.
+##
+## The version worth building later is not hearts — this is a robot, and the
+## story doc's clock is rust. A hull readout **on his back** would be diegetic
+## and always visible, because third person means you are always looking at
+## it. That wants a flat panel modelled on Tim, so it is an art decision.
+func _build_hud() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "HUD"
+	_hud = Label.new()
+	_hud.position = Vector2(26.0, 18.0)
+	_hud.add_theme_font_size_override("font_size", 26)
+	_hud.add_theme_color_override("font_color", Palette.STONE_LIGHT)
+	# Outlined rather than boxed: a panel would be the first piece of UI
+	# furniture in the project, and this needs to survive a bright sunlit
+	# background without becoming one.
+	_hud.add_theme_constant_override("outline_size", 8)
+	_hud.add_theme_color_override("font_outline_color", Palette.INK)
+	layer.add_child(_hud)
+	add_child(layer)
+	_show_hull()
+
+
+func _show_hull() -> void:
+	if _hud == null:
+		return
+	# Clamped, because hurt() updates this before it decides you are dead, and
+	# a killing blow would otherwise flash a negative number.
+	_hud.text = "hull  %d / %d" % [maxi(_health, 0), MAX_HEALTH]
 
 
 ## Bolt something onto a mount bone. How a trophy gets worn.
@@ -424,6 +469,7 @@ func hurt(amount: int, from: Vector3) -> void:
 	if _dead:
 		return
 	_health -= amount
+	_show_hull()
 
 	_flash_left = HURT_FLASH
 	_set_flash(true)

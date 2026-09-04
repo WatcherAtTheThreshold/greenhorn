@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dx344vewpmjti"
-path="res://.godot/imported/sword1.blend-b6e62b36fd2169989af672c60cd463ba.scn"
+uid="uid://6bv570lo6vqm"
+path="res://.godot/imported/mandibles.blend-19318891ddcd77665ccb027817bb05c6.scn"
 
 [deps]
 
-source_file="res://assets/blender/sword1.blend"
-dest_files=["res://.godot/imported/sword1.blend-b6e62b36fd2169989af672c60cd463ba.scn"]
+source_file="res://assets/blender/props/mandibles.blend"
+dest_files=["res://.godot/imported/mandibles.blend-19318891ddcd77665ccb027817bb05c6.scn"]
 
 [params]
 
