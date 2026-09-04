@@ -401,6 +401,15 @@ func _hitstop() -> void:
 	_stopping = false
 
 
+## Bolt something onto a mount bone. How a trophy gets worn.
+##
+## The whole augment idea in one call: fiction, mechanic and implementation
+## are the same object, and nothing about it is special-cased for what the
+## thing is or where it came from.
+func wear(file: String, bone: String) -> void:
+	Socket.equip(body, file, bone)
+
+
 ## Take a bite. Same signature the bugs answer to, so nothing needs to know
 ## which way round a fight is pointed.
 func hurt(amount: int, from: Vector3) -> void:

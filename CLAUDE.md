@@ -56,6 +56,11 @@ pixels-per-metre in 3D geometry; that idea only applies to texture density.
   arrives with no `StaticBody3D`.
 - **`-convcol` fills in any hole.** A convex hull of a broken wall is a solid
   block. Anything with a gap in it wants `-col`.
+- **A socket bone's parent decides what it follows; its position only decides
+  where it sits.** Independent, so a correct position hides a wrong parent
+  entirely until the rig animates. A prop that sits right in the rest pose
+  and then drifts is a hierarchy bug, not a placement one — check the bone's
+  Relations → Parent before touching its position.
 
 ### Controller
 

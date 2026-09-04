@@ -284,7 +284,7 @@ shell were always going to be the same two functions:
 
 Swapping weapons is one string. No re-export, no scene edit.
 
-### The four that actually cost time
+### The five that actually cost time
 
 **1. The attachment lands on the bone's head, +Y toward the tail.**
 The child sits at the head — the root end, not the tip — and inherits the
@@ -328,6 +328,26 @@ against it is guesswork. Risk-free to apply — no rig, no actions.
 **4. Godot deletes dots from animation names.**
 Not strictly a socket problem, but it is what made the finished sword sit in
 Tim's hand doing nothing. See [the naming note](#naming--what-the-project-understands).
+
+**5. A socket bone's parent decides what it follows. Its position only
+decides where it sits.**
+
+Those two are independent, and that is the trap: get the position right and a
+wrong parent is completely invisible until something moves.
+
+The mandibles were modelled on Tim's head, their origin set to the 3D cursor
+at the world origin, and saved out — the workflow that had worked for the
+shells. They arrived sitting perfectly on his head. And stayed exactly there
+while the head turned, because `mount.head` had been *positioned* correctly
+without being *parented* to the head bone.
+
+It looks like a placement bug and it is a hierarchy bug. If a socketed prop
+sits right in the rest pose and drifts the moment the rig animates, stop
+adjusting the position — check the bone's **Relations → Parent**.
+
+The shells got away with it because their socket sat at the bug's own origin
+*and* was parented into the thorax chain. Position at the origin is a
+convenience; the parent is the thing doing the work.
 
 ### The shell, specifically
 

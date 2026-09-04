@@ -106,6 +106,27 @@ The player works that out alone, and then keeps doing it.
 
 That's the whole theme in a loot table. No writing required.
 
+### Rule 2 answered itself — 2026-09-03
+
+The worry was that sparing a docile beetle would be *free*, and a choice with
+no cost is not a choice. The build answered it before any economy existed,
+and better than an economy would have.
+
+**They are in the way.** A harmless beetle is a solid body of exactly the same
+size as a dangerous one. In a crowd they can be used as cover — putting one
+between you and a biter genuinely works — and they can equally trap you,
+because closing on a biter through a press of docile ones means eating a bite
+you could otherwise have walked around.
+
+So the reason to kill one is not points. It is that **it was standing where
+you needed to be.** That is a far more uncomfortable answer than a number,
+and it arrives at no cost: it is emergent from collision, and the game never
+says a word about it.
+
+Which sharpens rule 2 rather than satisfying it. Whatever currency eventually
+exists, the docile ones do not need to pay *more* to be worth killing. They
+already are, for the worst possible reason.
+
 ---
 
 ## Lab stations

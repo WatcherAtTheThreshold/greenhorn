@@ -12,9 +12,59 @@ extends Node3D
 ##   z ~ -42   the shelter: walls, a doorway, and what they do to the camera
 ##   x ~ +15   scale references
 ##   x ~ -15   material comparison
+##
+## With `diagnostics` off none of that is built. You get a ring of standing
+## stones and a fight instead — same ground, same light, same scatter.
 
 const IMPORT_DIR := "res://assets/blender/"
 const PLAYER := preload("res://scenes/player.tscn")
+
+## Sandbox or arena. One flag rather than a second world script: the ground,
+## the lighting, the scatter and the primitives are the same either way, and
+## only the furniture differs.
+##
+## On: plinths, ramps, stairs, scale refs, the material row, the shelter — the
+## apparatus that tells you whether an import and the controller are behaving.
+## Off: a ring of standing stones and a fight. You cannot judge whether a
+## fight is any good while standing in a laboratory.
+@export var diagnostics := true
+
+# --- arena ------------------------------------------------------------------
+## Big enough to run away across, small enough that a fight stays in frame.
+const ARENA_RADIUS := 20.0
+## Stones in the ring. Enough that it reads as a wall from inside, with gaps
+## you can pass through — a gap is better than a wall for the camera, which is
+## the whole reason the arm sweep is a sphere now.
+const ARENA_STONES := 44
+const PILLAR_FILE  := "pillar.blend"
+
+# --- waves ------------------------------------------------------------------
+## Seconds between clearing a wave and the next one arriving. Long enough to
+## notice you won.
+const WAVE_GAP := 2.5
+
+# --- the boss ---------------------------------------------------------------
+## Waves survived before it turns up. Beating it ends the run — that is the
+## "exit" half of enter/clear/exit, and the reason a wave counter alone is a
+## treadmill rather than a loop.
+const WAVES_TO_BOSS := 1
+## The same beetle with bigger numbers, which is the whole point of trying it
+## this way: no new model, no new script, no new animations. If a big slow one
+## is a good fight, that is worth knowing before anything gets sculpted.
+##
+## Size scales its reach too, so those jaws genuinely arrive from further out.
+const BOSS_SIZE       := 2.2
+const BOSS_HEALTH     := 12
+const BOSS_SHELL_HITS := 6     ## the shell comes off halfway through
+const BOSS_BITE       := 2     ## the player has five, so three bites end it
+const BOSS_SPEED      := 1.2   ## slower than the small ones, and it has to be
+
+## The prize, and it is the title: a robot wearing beetle jaws on its head.
+##
+## Wired now, inert until the parts exist — Tim's rig needs `mount.head` and
+## somebody needs to model the mandibles. Then it lights up on its own.
+const TROPHY_FILE := "mandibles.blend"
+const TROPHY_BONE := "mount.head"
 
 const GROUND     := 140.0
 const SPAWN      := Vector3(0.0, 1.2, 9.0)
@@ -73,44 +123,146 @@ const ROCK_COUNT := 22
 const TRUNK_RADIUS := 0.25
 
 var _sun: DirectionalLight3D
+var _player: Node3D = null
+var _banner: Label3D = null
+var _wave := 0
+var _standing := 0            ## hostiles still up in this wave
+var _spawned: Array[Bug] = []
 
 
 func _ready() -> void:
 	_build_environment()
 	_build_ground()
-	_build_path()
-	_build_ramps()
-	_build_stairs()
-	_build_scale_refs()
-	_build_material_row()
-	_build_shelter()
 	_build_scenery()
-	_mount_imports()
+	if diagnostics:
+		_build_path()
+		_build_ramps()
+		_build_stairs()
+		_build_scale_refs()
+		_build_material_row()
+		_build_shelter()
+		_mount_imports()
+	else:
+		_build_arena()
 
-	var p := PLAYER.instantiate()
-	p.position = SPAWN
-	add_child(p)
+	_player = PLAYER.instantiate()
+	_player.position = SPAWN
+	add_child(_player)
 
-	# Placed on a ring rather than scattered, so every restart puts them in the
-	# same spots and two attempts are actually comparable — same reason the
-	# scenery is seeded.
-	for i in BUG_COUNT:
-		var a := TAU * float(i) / float(BUG_COUNT)
+	_banner = _label("", Vector3(0.0, 6.0, 0.0), 64, Palette.STONE_LIGHT)
+	_spawn_wave()
+
+
+# --- the loop ---------------------------------------------------------------
+## Spawn a wave, one bigger than the last.
+##
+## Placed on a ring rather than scattered, so every restart puts them in the
+## same spots and two attempts are actually comparable — same reason the
+## scenery is seeded.
+func _spawn_wave() -> void:
+	_wave += 1
+	_standing = 0
+
+	# Clear the previous wave's bodies. They are worth leaving on the grass
+	# while the wave lasts — a corpse is feedback — but not stacking up.
+	for old in _spawned:
+		if is_instance_valid(old):
+			old.queue_free()
+	_spawned.clear()
+
+	if _wave > WAVES_TO_BOSS:
+		_spawn_boss()
+		return
+
+	var count := BUG_COUNT + _wave - 1
+	for i in count:
+		var a := TAU * float(i) / float(count)
 		var kind: Dictionary = BUG_KINDS[i % BUG_KINDS.size()]
 		var b := Bug.new()
-		b.name = "Bug%d" % i
+		b.name = "Bug%d_%d" % [_wave, i]
 		b.model_file = kind["model"]
 		b.shell_file = kind["shell"]
 		b.shell_bone = kind["bone"]
 		b.position = BUG_SPAWN + Vector3(cos(a), 0.0, sin(a)) * BUG_SPREAD
 		# Handing each one the player directly beats a group lookup: the world
 		# already holds both, and there is nothing to go stale.
-		b.target = p as Node3D
+		b.target = _player
+		b.died.connect(_on_bug_died)
 		add_child(b)
+		_spawned.append(b)
+		# is_hostile only answers once the model is mounted, which happens on
+		# add_child. Asking earlier gets you a lie.
+		if b.is_hostile():
+			_standing += 1
+	_show_wave()
 
 
-## R rebuilds the whole plot from scratch: player back at spawn, bug alive and
-## wearing its shell again, debris gone.
+## One beetle, alone. No adds: the question this is asking is whether a big
+## slow one is a fight on its own terms, and a crowd around it would make that
+## impossible to read either way.
+func _spawn_boss() -> void:
+	var b := Bug.new()
+	b.name = "Boss"
+	b.model_file = "bug3.blend"
+	b.shell_file = "shell2.blend"
+	b.shell_bone = "shell2.socket"
+	b.size = BOSS_SIZE
+	b.max_health = BOSS_HEALTH
+	b.shell_hits = BOSS_SHELL_HITS
+	b.bite_damage = BOSS_BITE
+	b.walk_speed = BOSS_SPEED
+	b.position = BUG_SPAWN
+	b.target = _player
+	b.died.connect(_on_bug_died)
+	add_child(b)
+	_spawned.append(b)
+	_standing = 1
+	_show_wave()
+
+
+## Only the things that can bite gate a wave.
+##
+## This is the pacifist species question from the story doc, as a line of
+## code. Requiring every beetle dead would force the player to kill the docile
+## ones, and the doc is explicit that the moment the game demands it, it stops
+## being a choice. Sparing them now costs nothing but the time you did not
+## spend — which is exactly the shape the doc argues for.
+func _on_bug_died(b: Bug) -> void:
+	if not b.is_hostile():
+		return
+	_standing -= 1
+	_show_wave()
+	if _standing <= 0:
+		_cleared()
+
+
+func _show_wave() -> void:
+	if _banner == null:
+		return
+	if _wave > WAVES_TO_BOSS:
+		_banner.text = "the big one" if _standing > 0 else ""
+	elif _standing <= 0:
+		_banner.text = "wave %d cleared" % _wave
+	else:
+		_banner.text = "wave %d  —  %d left" % [_wave, _standing]
+
+
+func _cleared() -> void:
+	# The boss is the end of the run, not another wave. Enter, clear, exit —
+	# and this is the exit.
+	if _wave > WAVES_TO_BOSS:
+		_banner.text = "the horn is yours"
+		if _player != null and _player.has_method("wear"):
+			_player.wear(TROPHY_FILE, TROPHY_BONE)
+		return
+
+	await get_tree().create_timer(WAVE_GAP).timeout
+	if is_inside_tree():
+		_spawn_wave()
+
+
+## R rebuilds the whole plot from scratch: player back at spawn, bugs alive and
+## wearing their shells again, debris gone.
 ##
 ## It lives here rather than on the player because none of that is the
 ## player's business, and because a scene reload is exactly what you want
@@ -368,27 +520,20 @@ func _build_material_row() -> void:
 func _build_scenery() -> void:
 	# None of this is a test. It is here so the plot reads as somewhere,
 	# rather than as a grey lab with objects in it.
-	# The hills stay primitives — they are terrain, not props, and a squashed
-	# sphere at 60 m is doing a job no modelled asset would do better.
-	var hill := Palette.solid(Palette.HILL, 0.98)
-
+	#
+	# The ring of low hills that used to sit at 52-62 m is gone, deliberately,
+	# to find out what wants to be there instead. Its job was stopping the
+	# horizon being a hard line, and nothing has taken that over yet — so
+	# expect a flat edge in the distance until something does.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260824
 
-	# a ring of low hills, so the horizon is not a hard line
-	for i in 26:
-		var ang := TAU * float(i) / 26.0 + rng.randf_range(-0.06, 0.06)
-		var d := rng.randf_range(52.0, 62.0)
-		var r := rng.randf_range(7.0, 13.0)
-		_sphere(r, Vector3(cos(ang) * d, rng.randf_range(-1.5, 0.5), sin(ang) * d),
-			hill, rng.randf_range(0.22, 0.4))
-
-	# trees, kept clear of the test bands
+	# trees, kept clear of whatever is standing in the middle
 	var trees: Array[Transform3D] = []
 	for i in TREE_COUNT:
 		var px := rng.randf_range(-45.0, 45.0)
 		var pz := rng.randf_range(-46.0, 34.0)
-		if abs(px) < 21.0 and pz > -50.0 and pz < 14.0:
+		if not _open_ground(px, pz):
 			continue
 		# One mesh, spun and resized per instance. A forest that reads as a
 		# forest out of a single asset — no second tree needed for M3.
@@ -400,7 +545,7 @@ func _build_scenery() -> void:
 	for i in ROCK_COUNT:
 		var rx := rng.randf_range(-44.0, 44.0)
 		var rz := rng.randf_range(-44.0, 32.0)
-		if abs(rx) < 19.0 and rz > -50.0 and rz < 12.0:
+		if not _open_ground(rx, rz):
 			continue
 		# Sunk slightly, because a boulder resting exactly on the ground plane
 		# reads as dropped there rather than as part of the place.
@@ -460,6 +605,42 @@ func _piece(file: String, pos: Vector3, yaw: float) -> void:
 			+ "or -convcolonly.") % file)
 
 
+## Where scenery may land. The middle is spoken for either way — by the test
+## bands in the sandbox, by the fight in the arena — and a tree in the middle
+## of a stone circle is scenery in the way of the game.
+func _open_ground(x: float, z: float) -> bool:
+	if diagnostics:
+		return not (abs(x) < 21.0 and z > -50.0 and z < 14.0)
+	return Vector2(x, z).length() > ARENA_RADIUS + 4.0
+
+
+## A ring of standing stones: the horizon, the arena wall and the cover, out
+## of one asset.
+##
+## Gaps are deliberate. A solid wall pins the camera arm against it from the
+## inside; a gap lets the sphere sweep through and the arm breathe. It also
+## means the ring reads as a boundary without being a cage, which is the right
+## answer before there is anything as formal as a door.
+func _build_arena() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20260902
+
+	var stones: Array[Transform3D] = []
+	for i in ARENA_STONES:
+		var ang := TAU * float(i) / float(ARENA_STONES) + rng.randf_range(-0.04, 0.04)
+		var d := ARENA_RADIUS + rng.randf_range(-1.1, 1.1)
+		var s := rng.randf_range(0.85, 1.3)
+		# A little lean. A ring of perfectly upright stones reads as a fence;
+		# a few degrees of settle reads as something that has been standing a
+		# long time. Small enough that none of them looks knocked over.
+		var b := Basis(Vector3.UP, rng.randf_range(0.0, TAU))
+		b *= Basis(Vector3.RIGHT, rng.randf_range(-0.06, 0.06))
+		b = b.scaled(Vector3(s, s, s))
+		# Sunk, so the base is buried rather than resting on the grass.
+		stones.append(Transform3D(b, Vector3(cos(ang) * d, -0.2, sin(ang) * d)))
+	_scatter(PILLAR_FILE, stones, "Stones", false, 1.0)
+
+
 ## One scattered placement: on the ground, spun on Y, uniformly resized.
 ##
 ## Uniform on purpose. Jolt refuses a non-uniform scale on a collision shape
@@ -480,7 +661,8 @@ func _place(rng: RandomNumberGenerator, pos: Vector3, lo: float, hi: float) -> T
 ## The colliders are separate bodies because a MultiMesh has no collision —
 ## that is the trade. They cost physics, not draw calls, and a static body the
 ## player never touches costs close to nothing.
-func _scatter(file: String, xforms: Array[Transform3D], label: String, tall: bool) -> void:
+func _scatter(file: String, xforms: Array[Transform3D], label: String, tall: bool,
+		inset := 0.8) -> void:
 	if xforms.is_empty():
 		return
 	var res := load(IMPORT_DIR + file)
@@ -537,8 +719,10 @@ func _scatter(file: String, xforms: Array[Transform3D], label: String, tall: boo
 			cs.position = Vector3(0.0, box.position.y + box.size.y * 0.5, 0.0)
 		else:
 			var bs := BoxShape3D.new()
-			# inset horizontally so a rounded rock does not feel square underfoot
-			bs.size = Vector3(box.size.x * 0.8, box.size.y, box.size.z * 0.8)
+			# Inset horizontally so a rounded rock does not feel square underfoot.
+			# A standing stone passes 1.0 — it IS square, and clipping its
+			# corners would let you walk into one.
+			bs.size = Vector3(box.size.x * inset, box.size.y, box.size.z * inset)
 			cs.shape = bs
 			cs.position = box.get_center()
 		body.add_child(cs)

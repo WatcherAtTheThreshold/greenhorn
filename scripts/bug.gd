@@ -1,6 +1,10 @@
 extends CharacterBody3D
 class_name Bug
 
+## Fired once, when this one goes down. The world counts them to decide when a
+## wave is over.
+signal died(bug: Bug)
+
 ## A beetle that walks at you, wearing its shell on a socket bone.
 ##
 ## Built in code and spawned by world.gd rather than authored as a .tscn, for
@@ -12,7 +16,6 @@ class_name Bug
 ## watching one walk at you wearing the thing you are going to break.
 
 # --- feel -------------------------------------------------------------------
-const WALK_SPEED  := 1.8    ## m/s — well under the player's amble, so you can leave
 const ACCEL       := 8.0    ## m/s^2 toward target velocity
 const FRICTION    := 10.0   ## m/s^2 when it has nowhere to go
 const TURN_RATE   := 3.5    ## rad/s — sluggish on purpose, so you can circle it
@@ -28,15 +31,28 @@ const STOP_RANGE  := 1.2    ## metres. It has no attack, so it stops short
 const BODY_RADIUS := 0.32
 const BODY_HEIGHT := 0.7
 
+# --- what makes one beetle different from another ---------------------------
+## Exports rather than consts, because a boss is the same beetle with bigger
+## numbers. Everything else on this script stays a const: these five are the
+## only things a species varies by, and keeping the list short is what stops
+## "one enemy type, tuned" turning into a class hierarchy.
+##
 ## Swings it takes to kill, at the player's current damage. Your doc's open
 ## question is whether a shell should go in one hit or several — one is
-## simpler, several is probably the better game. This is that question as a
-## number, so answer it by playing rather than by arguing.
-const MAX_HEALTH := 3
-
-## Hits the shell survives. On this one it comes off — so at MAX_HEALTH 3 the
-## beetle takes a hit, loses its shell on the second, and dies on the third.
-const SHELL_HITS := 2
+## simpler, several is probably the better game.
+@export var max_health := 3
+## Hits the shell survives. On this one it comes off — so at 3 health and 2
+## here, the beetle takes a hit, loses its shell on the second, dies on the
+## third.
+@export var shell_hits := 2
+## Uniform scale of the model and its collision. Reach, stopping distance and
+## bite range all scale with it, so a big beetle has genuinely longer jaws
+## rather than a big model with a small bite.
+@export var size := 1.0
+## What one bite costs. The player has five.
+@export var bite_damage := 1
+## m/s. Well under the player's amble, so you can always leave.
+@export var walk_speed := 1.8
 
 # --- being hit --------------------------------------------------------------
 ## Feedback, in the order it matters. None of this is animation: a flash, a
@@ -68,7 +84,7 @@ const SHELL_SPREAD := 2.0
 ## lengthen it and the bite is free to walk away from.
 const BITE_FROM     := 0.5
 const BITE_TO       := 0.75
-const BITE_DAMAGE   := 1
+
 ## How close it has to be to start. Comfortably beyond STOP_RANGE, so it
 ## commits from where it stands rather than shuffling into contact first.
 const BITE_RANGE    := 1.9
@@ -76,6 +92,18 @@ const BITE_RANGE    := 1.9
 ## purpose — back off during the telegraph and the bite misses, which is what
 ## makes the telegraph worth reading.
 const BITE_REACH    := 1.5
+## Half-angle of the bite, in front of it. Mandibles are on the front of a
+## beetle, so the bite is a wedge rather than a sphere.
+##
+## Without this the bite lands anywhere within reach, including behind — so
+## stepping to the flank during the wind-up does nothing and the only escape
+## is straight backwards. That is fine on a small beetle you out-reach, and
+## unplayable on a big one whose jaws arrive from three metres out, because
+## retreating is then the only answer and you can never close again.
+##
+## With it, a big slow beetle becomes a positioning problem: do not stand in
+## front of it. Which is the fight worth having.
+const BITE_ARC      := 1.0   ## radians ~ 57 degrees either side of straight ahead
 ## Seconds between attempts, on top of the clip itself.
 const BITE_COOLDOWN := 1.1
 
@@ -112,7 +140,7 @@ var _bite_len := 0.0
 var _bite_wait := 0.0       ## cooldown before it may try again
 var _bit := false           ## this bite has already landed
 var _dead := false
-var _health := MAX_HEALTH
+var _health := 0
 var _flash_left := 0.0
 var _hit_left := 0.0            ## staggered: not steering, so the shove reads
 var _meshes: Array[MeshInstance3D] = []
@@ -120,12 +148,20 @@ var _flash_mat: StandardMaterial3D = null
 
 
 func _ready() -> void:
+	# Seeded here, not at declaration: world.gd sets max_health after new() and
+	# before add_child, so an initialiser would capture the default instead.
+	_health = max_health
+
+	# Size goes on the capsule and on the model holder, never on this body.
+	# Scaling a CharacterBody3D works with Jolt while the scale stays uniform,
+	# but it is one more thing that has to stay uniform forever, and there is
+	# nothing to gain from it.
 	var cap := CapsuleShape3D.new()
-	cap.radius = BODY_RADIUS
-	cap.height = BODY_HEIGHT
+	cap.radius = BODY_RADIUS * size
+	cap.height = BODY_HEIGHT * size
 	var col := CollisionShape3D.new()
 	col.shape = cap
-	col.position.y = BODY_HEIGHT * 0.5   # the model's origin is at its feet
+	col.position.y = BODY_HEIGHT * size * 0.5   # the model's origin is at its feet
 	add_child(col)
 
 	collision_layer = Layers.CHARACTER
@@ -146,6 +182,7 @@ func _mount_model() -> void:
 	# search and any future material flash have one node to work from.
 	_model = Node3D.new()
 	_model.name = "Model"
+	_model.scale = Vector3(size, size, size)
 	add_child(_model)
 	_model.add_child((res as PackedScene).instantiate())
 
@@ -208,10 +245,10 @@ func _physics_process(delta: float) -> void:
 	if target != null and not _dead and _hit_left <= 0.0 and _bite_left <= 0.0:
 		var to := target.global_position - global_position
 		to.y = 0.0
-		if to.length() > STOP_RANGE:
+		if to.length() > STOP_RANGE * size:
 			wish = to.normalized()
 
-	var want := wish * WALK_SPEED
+	var want := wish * walk_speed
 	var rate := ACCEL if wish != Vector3.ZERO else FRICTION
 	velocity.x = move_toward(velocity.x, want.x, rate * delta)
 	velocity.z = move_toward(velocity.z, want.z, rate * delta)
@@ -245,16 +282,23 @@ func _bite(delta: float) -> void:
 		if not _bit and t >= BITE_FROM and t <= BITE_TO:
 			var flat := target.global_position - global_position
 			flat.y = 0.0
-			if flat.length() <= BITE_REACH and target.has_method("hurt"):
-				_bit = true
-				target.hurt(BITE_DAMAGE, global_position)
+			if flat.length() <= BITE_REACH * size and flat.length() > 0.001 \
+					and target.has_method("hurt"):
+				# In front, not merely near. It committed to a direction at the
+				# start of the wind-up and does not track, so getting to its
+				# flank while the jaws are open is a real answer.
+				var facing := -global_transform.basis.z
+				facing.y = 0.0
+				if facing.angle_to(flat) <= BITE_ARC:
+					_bit = true
+					target.hurt(bite_damage, global_position)
 		return
 
 	if _bite_wait > 0.0 or _hit_left > 0.0:
 		return
 	var gap := target.global_position - global_position
 	gap.y = 0.0
-	if gap.length() > BITE_RANGE:
+	if gap.length() > BITE_RANGE * size:
 		return
 
 	var a := _anim.get_animation(_clip_attack)
@@ -324,7 +368,7 @@ func hurt(amount: int, from: Vector3) -> void:
 		_anim.play(_clip_hit)
 		_anim.seek(0.0, true)
 
-	if MAX_HEALTH - _health >= SHELL_HITS:
+	if max_health - _health >= shell_hits:
 		_break_shell(from)
 
 	if _health <= 0:
@@ -442,3 +486,12 @@ func die() -> void:
 	velocity = Vector3.ZERO
 	if _anim != null and _clip_death != "":
 		_anim.play(_clip_death)
+	died.emit(self)
+
+
+## Whether this one can actually hurt you. It comes down to whether the model
+## brought an `attack` clip: bug2 did not, so it walks at you and never bites.
+##
+## Only answers correctly once the model is mounted, which happens in _ready.
+func is_hostile() -> bool:
+	return _clip_attack != ""

@@ -92,6 +92,12 @@ static func make(root: Node, bone: String) -> BoneAttachment3D:
 static func equip(root: Node, file: String, bone: String) -> Node:
 	if file == "":
 		return null
+	# Checked rather than assumed, because load() on a missing path throws a
+	# red error into the log rather than returning null. A socket wired up
+	# before its asset exists should say so once, quietly, and carry on.
+	if not ResourceLoader.exists(MODEL_DIR + file):
+		push_warning("greenhorn: %s does not exist yet, so nothing to equip" % file)
+		return null
 	var res := load(MODEL_DIR + file)
 	if not (res is PackedScene):
 		push_warning("greenhorn: %s is not a scene, cannot equip it" % file)
