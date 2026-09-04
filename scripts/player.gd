@@ -401,6 +401,14 @@ func _hitstop() -> void:
 	_stopping = false
 
 
+## Repair. Only shelter calls this — nothing out in the open gives anything
+## back, and that asymmetry is what makes a detour a decision.
+func heal(n: int) -> void:
+	if _dead:
+		return
+	_health = mini(_health + n, MAX_HEALTH)
+
+
 ## Bolt something onto a mount bone. How a trophy gets worn.
 ##
 ## The whole augment idea in one call: fiction, mechanic and implementation

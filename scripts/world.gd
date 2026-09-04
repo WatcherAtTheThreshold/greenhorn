@@ -13,8 +13,15 @@ extends Node3D
 ##   x ~ +15   scale references
 ##   x ~ -15   material comparison
 ##
-## With `diagnostics` off none of that is built. You get a ring of standing
-## stones and a fight instead — same ground, same light, same scatter.
+## With `diagnostics` off none of that is built. You get the run instead —
+## same ground, same light, same scatter, different furniture:
+##   (0, -9)     the first ring — walk in and it starts
+##   (-23, -31)  the compound — walls and a doorway, both species
+##   (2, -40)    the shelter — the only place damage comes back
+##   (17, -51)   the deep ring — the big one
+##
+## Nothing between those places is a corridor in the level-design sense. It is
+## just ground, and crossing it is the cost.
 
 const IMPORT_DIR := "res://assets/blender/"
 const PLAYER := preload("res://scenes/player.tscn")
@@ -29,14 +36,15 @@ const PLAYER := preload("res://scenes/player.tscn")
 ## fight is any good while standing in a laboratory.
 @export var diagnostics := true
 
-# --- arena ------------------------------------------------------------------
-## Big enough to run away across, small enough that a fight stays in frame.
-const ARENA_RADIUS := 20.0
-## Stones in the ring. Enough that it reads as a wall from inside, with gaps
-## you can pass through — a gap is better than a wall for the camera, which is
-## the whole reason the arm sweep is a sphere now.
-const ARENA_STONES := 44
-const PILLAR_FILE  := "pillar.blend"
+# --- standing stones --------------------------------------------------------
+## Metres between stones in a ring. The count follows from the radius, so a
+## bigger room is not a sparser one.
+##
+## Close enough that a ring reads as a wall from inside, far enough apart to
+## walk between. The gaps are deliberate: a gap is better than a wall for the
+## camera, which is the whole reason the arm sweep is a sphere now.
+const STONE_SPACING := 2.9
+const PILLAR_FILE   := "pillar.blend"
 
 # --- waves ------------------------------------------------------------------
 ## Seconds between clearing a wave and the next one arriving. Long enough to
@@ -60,12 +68,63 @@ const BOSS_BITE       := 2     ## the player has five, so three bites end it
 const BOSS_SPEED      := 1.2   ## slower than the small ones, and it has to be
 
 ## The prize, and it is the title: a robot wearing beetle jaws on its head.
-##
-## Wired now, inert until the parts exist — Tim's rig needs `mount.head` and
-## somebody needs to model the mandibles. Then it lights up on its own.
 const TROPHY_FILE := "mandibles.blend"
 const TROPHY_BONE := "mount.head"
 
+# --- the run: rooms and the ground between them --------------------------
+## Three rooms and the ground between them.
+##
+## A room is a place, a shape and a fight. Walking into one starts it; nothing
+## happens until you do, so the corridors are somewhere you travel rather than
+## somewhere you are shepherded through.
+##
+## They must be taken in order. Wandering into the third does nothing — the
+## sequence is the point, and "three fights available at once" is a different
+## game from "three fights in a row".
+##
+## Note what is NOT here: no health reset, no scene change, no state to carry.
+## One world, three regions, one script — so a run is a walk, and the damage
+## you took in room one is still on you in room three. That is the entire
+## reason this stage exists.
+const ROOMS := [
+	{
+		"name": "the first ring",
+		"at": Vector3(0.0, 0.0, -9.0),
+		"radius": 13.0,
+		"walled": false,
+		"bugs": 3,
+	},
+	{
+		"name": "the compound",
+		"at": Vector3(-23.0, 0.0, -31.0),
+		"radius": 11.0,
+		"walled": true,       ## the doorway that already proved itself
+		"bugs": 6,
+	},
+	{
+		"name": "the deep ring",
+		"at": Vector3(17.0, 0.0, -51.0),
+		"radius": 16.0,
+		"walled": false,
+		"bugs": 0,            ## the big one, alone
+		"boss": true,
+	},
+]
+
+## Off the direct line between rooms two and three, on purpose. Reaching it
+## costs you distance you could have spent arriving at the boss intact — which
+## is the whole decision this stage is trying to provoke.
+const SHELTER_AT   := Vector3(2.0, 0.0, -40.0)
+const SHELTER_SIZE := 4.0    ## half-width, so an 8 m square
+## Health per second, standing inside. Nothing out in the open gives any back.
+const MEND_RATE    := 0.5
+
+## Survives `reload_current_scene()`, so it survives dying and it survives R.
+## Not a save file — quitting clears it — but enough to find out whether
+## knowing you got further last time changes how you play.
+static var furthest := 0
+
+# --- spawn and layout -------------------------------------------------------
 const GROUND     := 140.0
 const SPAWN      := Vector3(0.0, 1.2, 9.0)
 ## Off the path and clear of the plinth row, so they have to walk to reach you
@@ -126,8 +185,13 @@ var _sun: DirectionalLight3D
 var _player: Node3D = null
 var _banner: Label3D = null
 var _wave := 0
-var _standing := 0            ## hostiles still up in this wave
+var _standing := 0            ## hostiles still up in this wave or room
 var _spawned: Array[Bug] = []
+var _room := -1               ## the room being fought, -1 between them
+var _next_room := 0           ## the only one that will trigger
+var _sheltered := false
+var _mend := 0.0
+var _rings := 0               ## MultiMesh names have to be unique
 
 
 func _ready() -> void:
@@ -143,17 +207,137 @@ func _ready() -> void:
 		_build_shelter()
 		_mount_imports()
 	else:
-		_build_arena()
+		_build_run()
 
 	_player = PLAYER.instantiate()
 	_player.position = SPAWN
 	add_child(_player)
 
-	_banner = _label("", Vector3(0.0, 6.0, 0.0), 64, Palette.STONE_LIGHT)
-	_spawn_wave()
+	_banner = _label("", SPAWN + Vector3(0.0, 4.6, -6.0), 56, Palette.STONE_LIGHT)
+	if diagnostics:
+		_spawn_wave()
+	else:
+		_show_run()
 
 
-# --- the loop ---------------------------------------------------------------
+# --- walking the run --------------------------------------------------------
+## Build all three rooms and the shelter between them. No fights start here —
+## every one waits for you to walk in.
+func _build_run() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20260904
+
+	for i in ROOMS.size():
+		var room: Dictionary = ROOMS[i]
+		var at: Vector3 = room["at"]
+		if room["walled"]:
+			_compound(at, room["radius"] * 0.62)
+		else:
+			_ring(at, room["radius"], rng)
+		_label(room["name"], at + Vector3(0.0, 5.0, 0.0), 40, Palette.STONE_LIGHT)
+		_trigger(at, room["radius"], "Room%d" % i, _on_room_entered.bind(i),
+			_on_room_left.bind(i))
+
+	# The shelter. Four walls and a door, same kit as the compound, small
+	# enough that the camera collapses inside it — which is the point. It
+	# should feel like ducking in, not like another arena.
+	_compound(SHELTER_AT, SHELTER_SIZE)
+	_label("shelter", SHELTER_AT + Vector3(0.0, 4.4, 0.0), 36, Palette.ACCENT)
+	_trigger(SHELTER_AT, SHELTER_SIZE, "Shelter",
+		_on_shelter_entered, _on_shelter_left)
+
+
+## A cylinder you can walk into. Masks CHARACTER, so only bodies trip it, and
+## the callbacks sort out whether it was the player.
+func _trigger(at: Vector3, radius: float, label: String,
+		on_in: Callable, on_out: Callable) -> void:
+	var cyl := CylinderShape3D.new()
+	cyl.radius = radius
+	cyl.height = 8.0
+	var cs := CollisionShape3D.new()
+	cs.shape = cyl
+	cs.position.y = 4.0
+	var area := Area3D.new()
+	area.name = label
+	area.collision_mask = Layers.CHARACTER
+	area.add_child(cs)
+	area.position = at
+	add_child(area)
+	area.body_entered.connect(on_in)
+	area.body_exited.connect(on_out)
+
+
+func _on_room_entered(body: Node3D, index: int) -> void:
+	# Only the player, only the next one, and only once. Beetles wander into
+	# these all the time.
+	if body != _player or index != _next_room or _room >= 0:
+		return
+	_room = index
+	_standing = 0
+	var room: Dictionary = ROOMS[index]
+	var at: Vector3 = room["at"]
+	var radius: float = room["radius"]
+	if room.get("boss", false):
+		# Deep in, so you have to come to it rather than meeting it at the edge.
+		_spawn_boss(at + Vector3(0.0, 0.0, -radius * 0.5))
+	else:
+		_spawn_group(int(room["bugs"]), at, 3.4)
+	_show_run()
+
+
+## Leaving a fight does not end it. Walking out is allowed — it just means
+## they follow you out, which is the only retreat this stage offers.
+func _on_room_left(_body: Node3D, _index: int) -> void:
+	pass
+
+
+func _on_shelter_entered(body: Node3D) -> void:
+	if body == _player:
+		_sheltered = true
+
+
+func _on_shelter_left(body: Node3D) -> void:
+	if body == _player:
+		_sheltered = false
+
+
+## Damage only comes back inside. That single asymmetry is what turns the
+## detour into a decision instead of a formality.
+func _process(delta: float) -> void:
+	if not _sheltered or _player == null or not _player.has_method("heal"):
+		return
+	_mend += delta * MEND_RATE
+	if _mend >= 1.0:
+		_mend -= 1.0
+		_player.heal(1)
+
+
+func _room_cleared() -> void:
+	_next_room = _room + 1
+	furthest = maxi(furthest, _next_room)
+	_room = -1
+	if _next_room >= ROOMS.size():
+		_show_run()
+		if _player != null and _player.has_method("wear"):
+			_player.wear(TROPHY_FILE, TROPHY_BONE)
+		return
+	_show_run()
+
+
+func _show_run() -> void:
+	if _banner == null:
+		return
+	if _next_room >= ROOMS.size():
+		_banner.text = "the horn is yours"
+	elif _room >= 0:
+		_banner.text = "%s  —  %d left" % [ROOMS[_room]["name"], _standing]
+	else:
+		_banner.text = "find %s" % ROOMS[_next_room]["name"]
+		if furthest > _next_room:
+			_banner.text += "      (best: %d of %d)" % [furthest, ROOMS.size()]
+
+
+# --- the sandbox loop -------------------------------------------------------
 ## Spawn a wave, one bigger than the last.
 ##
 ## Placed on a ring rather than scattered, so every restart puts them in the
@@ -171,19 +355,28 @@ func _spawn_wave() -> void:
 	_spawned.clear()
 
 	if _wave > WAVES_TO_BOSS:
-		_spawn_boss()
-		return
+		_spawn_boss(BUG_SPAWN)
+	else:
+		_spawn_group(BUG_COUNT + _wave - 1, BUG_SPAWN, BUG_SPREAD)
+	_show_wave()
 
-	var count := BUG_COUNT + _wave - 1
+
+## A ring of beetles, alternating species, around a point. Shared by the
+## sandbox's waves and the run's rooms — the only difference between them is
+## who decides when to call it.
+##
+## Placed on a ring rather than scattered, so every restart puts them in the
+## same spots and two attempts are actually comparable — same reason the
+## scenery is seeded.
+func _spawn_group(count: int, at: Vector3, spread: float) -> void:
 	for i in count:
 		var a := TAU * float(i) / float(count)
 		var kind: Dictionary = BUG_KINDS[i % BUG_KINDS.size()]
 		var b := Bug.new()
-		b.name = "Bug%d_%d" % [_wave, i]
 		b.model_file = kind["model"]
 		b.shell_file = kind["shell"]
 		b.shell_bone = kind["bone"]
-		b.position = BUG_SPAWN + Vector3(cos(a), 0.0, sin(a)) * BUG_SPREAD
+		b.position = at + Vector3(cos(a), 0.0, sin(a)) * spread
 		# Handing each one the player directly beats a group lookup: the world
 		# already holds both, and there is nothing to go stale.
 		b.target = _player
@@ -194,13 +387,12 @@ func _spawn_wave() -> void:
 		# add_child. Asking earlier gets you a lie.
 		if b.is_hostile():
 			_standing += 1
-	_show_wave()
 
 
 ## One beetle, alone. No adds: the question this is asking is whether a big
 ## slow one is a fight on its own terms, and a crowd around it would make that
 ## impossible to read either way.
-func _spawn_boss() -> void:
+func _spawn_boss(at: Vector3) -> void:
 	var b := Bug.new()
 	b.name = "Boss"
 	b.model_file = "bug3.blend"
@@ -211,13 +403,12 @@ func _spawn_boss() -> void:
 	b.shell_hits = BOSS_SHELL_HITS
 	b.bite_damage = BOSS_BITE
 	b.walk_speed = BOSS_SPEED
-	b.position = BUG_SPAWN
+	b.position = at
 	b.target = _player
 	b.died.connect(_on_bug_died)
 	add_child(b)
 	_spawned.append(b)
-	_standing = 1
-	_show_wave()
+	_standing += 1
 
 
 ## Only the things that can bite gate a wave.
@@ -231,9 +422,14 @@ func _on_bug_died(b: Bug) -> void:
 	if not b.is_hostile():
 		return
 	_standing -= 1
-	_show_wave()
-	if _standing <= 0:
-		_cleared()
+	if diagnostics:
+		_show_wave()
+		if _standing <= 0:
+			_cleared()
+	else:
+		_show_run()
+		if _standing <= 0 and _room >= 0:
+			_room_cleared()
 
 
 func _show_wave() -> void:
@@ -554,28 +750,30 @@ func _build_scenery() -> void:
 
 
 func _build_shelter() -> void:
-	var z := SHELTER_Z
+	_compound(Vector3(0.0, 0.0, SHELTER_Z), SHELTER_HALF)
+	_label("walk in and watch the camera",
+		Vector3(0.0, 4.2, SHELTER_Z + SHELTER_HALF + 2.0), 36, Palette.STONE_LIGHT)
 
-	# Back wall, full width.
-	for i in 3:
-		_piece(WALL_FILE, Vector3((float(i) - 1.0) * MODULE, 0.0, z - SHELTER_HALF), 0.0)
 
-	# Sides, stopping short of the corners. A ruin with gaps in it reads
-	# better than a sealed box, and the gaps are what let you find out
-	# whether the camera copes with a wall between it and you.
-	for i in 2:
-		var zz := z + (float(i) - 0.5) * MODULE
-		_piece(WALL_FILE, Vector3(-SHELTER_HALF, 0.0, zz), PI * 0.5)
-		_piece(BROKEN_FILE, Vector3(SHELTER_HALF, 0.0, zz), PI * 0.5)
-
-	# Front: a doorway with broken wall either side, so there is a way in and
-	# a reason to walk through it rather than round.
-	_piece(DOOR_FILE, Vector3(0.0, 0.0, z + SHELTER_HALF), 0.0)
-	_piece(BROKEN_FILE, Vector3(-MODULE, 0.0, z + SHELTER_HALF), 0.0)
-	_piece(BROKEN_FILE, Vector3(MODULE, 0.0, z + SHELTER_HALF), 0.0)
-
-	_label("walk in and watch the camera", Vector3(0.0, 4.2, z + SHELTER_HALF + 2.0),
-		36, Palette.STONE_LIGHT)
+## Four walls and a doorway around a point, on the 2 m grid.
+##
+## The corners are left open. A ruin with gaps reads better than a sealed box,
+## and the gaps are also what let the camera arm breathe — a solid enclosure
+## pins it, which the shelter band demonstrated.
+func _compound(at: Vector3, half: float) -> void:
+	var n := maxi(2, int(round(half * 2.0 / MODULE)))
+	var door := n / 2
+	for i in n:
+		var t := (float(i) - float(n - 1) * 0.5) * MODULE
+		_piece(WALL_FILE, at + Vector3(t, 0.0, -half), 0.0)           # back
+		_piece(WALL_FILE, at + Vector3(-half, 0.0, t), PI * 0.5)      # left
+		_piece(BROKEN_FILE, at + Vector3(half, 0.0, t), PI * 0.5)     # right
+		# Front: one doorway, broken wall either side of it, so there is a way
+		# in and a reason to walk through rather than round.
+		if i == door:
+			_piece(DOOR_FILE, at + Vector3(t, 0.0, half), 0.0)
+		else:
+			_piece(BROKEN_FILE, at + Vector3(t, 0.0, half), 0.0)
 
 
 ## Place one imported piece, upright on the ground and spun about Y.
@@ -611,7 +809,11 @@ func _piece(file: String, pos: Vector3, yaw: float) -> void:
 func _open_ground(x: float, z: float) -> bool:
 	if diagnostics:
 		return not (abs(x) < 21.0 and z > -50.0 and z < 14.0)
-	return Vector2(x, z).length() > ARENA_RADIUS + 4.0
+	var p := Vector3(x, 0.0, z)
+	for room: Dictionary in ROOMS:
+		if p.distance_to(room["at"]) < float(room["radius"]) + 4.0:
+			return false
+	return p.distance_to(SHELTER_AT) > SHELTER_SIZE + 5.0
 
 
 ## A ring of standing stones: the horizon, the arena wall and the cover, out
@@ -621,14 +823,14 @@ func _open_ground(x: float, z: float) -> bool:
 ## inside; a gap lets the sphere sweep through and the arm breathe. It also
 ## means the ring reads as a boundary without being a cage, which is the right
 ## answer before there is anything as formal as a door.
-func _build_arena() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 20260902
-
+## A ring of standing stones around a point. Stone count scales with the
+## radius so a bigger room is not a sparser one.
+func _ring(at: Vector3, radius: float, rng: RandomNumberGenerator) -> void:
+	var n := maxi(12, int(round(TAU * radius / STONE_SPACING)))
 	var stones: Array[Transform3D] = []
-	for i in ARENA_STONES:
-		var ang := TAU * float(i) / float(ARENA_STONES) + rng.randf_range(-0.04, 0.04)
-		var d := ARENA_RADIUS + rng.randf_range(-1.1, 1.1)
+	for i in n:
+		var ang := TAU * float(i) / float(n) + rng.randf_range(-0.04, 0.04)
+		var d := radius + rng.randf_range(-1.1, 1.1)
 		var s := rng.randf_range(0.85, 1.3)
 		# A little lean. A ring of perfectly upright stones reads as a fence;
 		# a few degrees of settle reads as something that has been standing a
@@ -637,8 +839,9 @@ func _build_arena() -> void:
 		b *= Basis(Vector3.RIGHT, rng.randf_range(-0.06, 0.06))
 		b = b.scaled(Vector3(s, s, s))
 		# Sunk, so the base is buried rather than resting on the grass.
-		stones.append(Transform3D(b, Vector3(cos(ang) * d, -0.2, sin(ang) * d)))
-	_scatter(PILLAR_FILE, stones, "Stones", false, 1.0)
+		stones.append(Transform3D(b, at + Vector3(cos(ang) * d, -0.2, sin(ang) * d)))
+	_scatter(PILLAR_FILE, stones, "Stones%d" % _rings, false, 1.0)
+	_rings += 1
 
 
 ## One scattered placement: on the ground, spun on Y, uniformly resized.

@@ -92,7 +92,14 @@ that go wrong on the way out of Blender.
 The sandbox is feeding a game. Planning lives in `docs/`:
 
 - [green-horn-outline.md](docs/green-horn-outline.md) — premise, budgets, milestone ladder
-- [m2-first-fight.md](docs/m2-first-fight.md) — **the current stage**: one bug, one hit, one shell
+- [m2-first-fight.md](docs/m2-first-fight.md) — the fight, and what building it answered
+- [m4-three-rooms-and-a-run.md](docs/m4-three-rooms-and-a-run.md) — **the current stage**: sequence, state, an ending
+- [shared-world.md](docs/shared-world.md) — the world Green Horn shares with the Ash stories
+
+The Ash stories are prose set in the same world, thousands of years later:
+[Apprentice to the East](docs/ash-1-apprentice-to-the-east.md),
+[Echoes in the Sub-Station](docs/ash-2-echoes-in-the-sub-station.md),
+[Enter Gloam Knight](docs/ash-3-enter-gloam-knight.md).
 
 ## Where things live
 

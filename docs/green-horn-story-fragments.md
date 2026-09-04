@@ -14,6 +14,12 @@ Arthropods recover fastest after mass extinction events. With no predators, no c
 
 Shares a world and lore with *Subtle Spirits*.
 
+**And with the Ash stories, which are the same plan thousands of years later**
+— see [shared-world.md](shared-world.md). That doc is the place to settle
+anything about the world itself; this one stays about theme and mechanics.
+The short version worth carrying around: Timothy, in those stories, is this
+game's protagonist at the end of his run, and the re-seeding worked.
+
 ### Why 35% is the right number
 
 Insects breathe by passive diffusion through tracheal tubes rather than lungs, so body size is capped by how deep oxygen can physically reach into the body. Raise the partial pressure and the ceiling rises with it. 35% is roughly the Carboniferous peak — the period that actually produced 70cm dragonflies and two-meter millipedes.
