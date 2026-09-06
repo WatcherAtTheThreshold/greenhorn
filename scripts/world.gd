@@ -15,8 +15,8 @@ extends Node3D
 ##
 ## With `diagnostics` off none of that is built. You get the run instead —
 ## same ground, same light, same scatter, different furniture:
-##   (0, -9)     the first ring — walk in and it starts
-##   (-23, -31)  the compound — walls and a doorway, both species
+##   (0, -9)     the first ring — spiders and tiger beetles, no shells to crack
+##   (-23, -31)  the compound — walls, a doorway, and both beetle species
 ##   (2, -40)    the shelter — the only place damage comes back
 ##   (17, -51)   the deep ring — the big one
 ##
@@ -97,7 +97,11 @@ const ROOMS := [
 		"at": Vector3(0.0, 0.0, -9.0),
 		"radius": 13.0,
 		"walled": false,
-		"bugs": 3,
+		"bugs": 4,
+		# Spiders here rather than everywhere. They have no shell, so a fight
+		# against one is only about the jaws — which makes them the right thing
+		# to meet first, before the shell mechanic is introduced.
+		"kinds": ["spider", "tiger-beetle"],
 	},
 	{
 		"name": "the compound",
@@ -105,6 +109,7 @@ const ROOMS := [
 		"radius": 11.0,
 		"walled": true,       ## the doorway that already proved itself
 		"bugs": 6,
+		"kinds": ["tiger-beetle", "rain-beetle"],
 	},
 	{
 		"name": "the deep ring",
@@ -139,8 +144,7 @@ const BUG_SPAWN  := Vector3(9.0, 0.4, 4.0)
 ## against a single target. A swing that sweeps through two of them is the
 ## first honest test of the hit window, the cancel window and the knockback.
 const BUG_COUNT  := 6
-## The roster: a species and the carapace it wears. Spawns cycle through it,
-## so the species arrive mixed rather than in blocks.
+## The roster: a species, keyed by name, and the carapace it wears.
 ##
 ## Tiger beetles bite. Rain beetles do not — no `attack` clip, so everything
 ## degrades and one simply walks at you while the other does the damage. That
@@ -148,11 +152,19 @@ const BUG_COUNT  := 6
 ## not giving it an animation.
 ##
 ## A species with no shell is `""`, which the socket code already treats as
-## nothing to equip. Adding one is a row, not a code change.
-const BUG_KINDS := [
-	{"model": "tiger-beetle.blend", "shell": "props/tiger-beetle-shell.blend"},
-	{"model": "rain-beetle.blend",  "shell": "props/rain-beetle-shell.blend"},
-]
+## nothing to equip. Spiders have none: nothing to crack, so the fight against
+## one is only about the jaws.
+##
+## Keyed rather than a list so a room can name what lives in it. Adding a
+## species is a row here plus a name in whichever rooms it belongs to.
+const BUG_KINDS := {
+	"tiger-beetle": {"model": "tiger-beetle.blend", "shell": "props/tiger-beetle-shell.blend"},
+	"rain-beetle":  {"model": "rain-beetle.blend",  "shell": "props/rain-beetle-shell.blend"},
+	"spider":       {"model": "spider.blend",       "shell": ""},
+}
+## What the sandbox's waves draw from — everything, so a new species shows up
+## there without being placed in the run first.
+const ALL_KINDS: Array[String] = ["tiger-beetle", "rain-beetle", "spider"]
 ## Ring radius at spawn. Far enough apart that they do not start inside each
 ## other; close enough that they arrive as a group rather than a queue.
 const BUG_SPREAD := 2.4
@@ -291,7 +303,7 @@ func _on_room_entered(body: Node3D, index: int) -> void:
 		# Deep in, so you have to come to it rather than meeting it at the edge.
 		_spawn_boss(at + Vector3(0.0, 0.0, -radius * 0.5))
 	else:
-		_spawn_group(int(room["bugs"]), at, 3.4)
+		_spawn_group(int(room["bugs"]), at, 3.4, room.get("kinds", ALL_KINDS))
 	_show_run()
 
 
@@ -369,7 +381,7 @@ func _spawn_wave() -> void:
 	if _wave > WAVES_TO_BOSS:
 		_spawn_boss(BUG_SPAWN)
 	else:
-		_spawn_group(BUG_COUNT + _wave - 1, BUG_SPAWN, BUG_SPREAD)
+		_spawn_group(BUG_COUNT + _wave - 1, BUG_SPAWN, BUG_SPREAD, ALL_KINDS)
 	_show_wave()
 
 
@@ -380,10 +392,14 @@ func _spawn_wave() -> void:
 ## Placed on a ring rather than scattered, so every restart puts them in the
 ## same spots and two attempts are actually comparable — same reason the
 ## scenery is seeded.
-func _spawn_group(count: int, at: Vector3, spread: float) -> void:
+func _spawn_group(count: int, at: Vector3, spread: float, kinds: Array) -> void:
+	if kinds.is_empty():
+		return
 	for i in count:
 		var a := TAU * float(i) / float(count)
-		var kind: Dictionary = BUG_KINDS[i % BUG_KINDS.size()]
+		# Cycled rather than random, so a room's mix is the same every attempt
+		# and two runs are comparable — same reason the scenery is seeded.
+		var kind: Dictionary = BUG_KINDS[kinds[i % kinds.size()]]
 		var b := Bug.new()
 		b.model_file = kind["model"]
 		b.shell_file = kind["shell"]

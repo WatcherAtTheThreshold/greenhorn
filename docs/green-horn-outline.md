@@ -108,7 +108,115 @@ Weapons with their own moving parts (recoil, a spinning drill) get a tiny armatu
 
 ---
 
-## 4. Environment Assets
+## 4. Character Design — Timothy
+
+*Direction set 2026-09-06.*
+
+There are three descriptions of this character in existence: the original 2D
+illustration from *Smallish Realms*, the Ash chapters in `docs/`, and the model
+currently in the game. The first two agree with each other. The third agrees
+with neither, and that is the gap to close.
+
+### The cloak is canon, not nostalgia
+
+It is easy to file the cape under "things the 2D version had that the 3D version
+can't afford." The stories say otherwise —
+[ash-1-apprentice-to-the-east.md](ash-1-apprentice-to-the-east.md):
+
+> *"It was a robot, unmoving, coated with layers of gray road dust. Its tattered
+> cloak flapped in the breeze."*
+
+and [ash-2-echoes-in-the-sub-station.md](ash-2-echoes-in-the-sub-station.md):
+
+> *"At first it appeared to be a cloaked human but as it got closer they saw it
+> was a robot."*
+
+That second line is a **reveal that only works if the cloak is there** — the
+silhouette has to lie about what he is until you're close. It is written twice.
+So the cloak is load-bearing for how Timothy is introduced, not decoration, and
+it belongs on the model.
+
+### Take the palette and the silhouette. Leave the rendering.
+
+The original is a 2D illustration: black outlines, flat fills. Reproducing *that*
+in 3D means an inverted-hull outline pass — a second material on every object,
+which fights the one-atlas, one-draw-call discipline the whole project runs on.
+It would also flatten the lighting, and per the art direction the mood lives in
+the lighting rather than the models, which is exactly what makes it affordable
+for one person.
+
+What transfers is the **colour** and the **shape read at a glance**. Not the line
+art.
+
+### Order of work, by value per effort
+
+**1. Palette — first, and nearly free.** The current model is one saturated blue
+plus grey, with *no accent colour anywhere*. The original is bone-white head,
+gold cloak, blue-grey body, brown leather. The gold is what makes him legible.
+
+Because everything is on the shared palette atlas with UVs collapsed to one pixel
+per face, a recolour is *moving UV islands to different swatches*. No repainting,
+no re-UV, no new texture, no new material. Largest visual gain available for the
+least risk.
+
+**2. Horns — the socket already ships.** `mount.head` and
+`props/mandibles.blend` already work. Antlers are the identical pipeline: one
+object, no rig, no skinning, a few hundred triangles.
+
+**3. Cloak — last, because it touches the rig.** Unlike the other two it changes
+every animation that already exists. Do it once the first two have landed.
+
+### Horns as progression — the title's third job
+
+The title already claims three meanings: novice, returning green, mandible. The
+character design can carry the first and third at the same time.
+
+**Start plain. Earn the horns.** The unit is activated bare, and a good run ends
+with it standing there looking like the original 2D Timothy. This converts the
+original design from a target that was abandoned as too complex into the thing
+the *player* is reaching for — and it costs nothing that isn't already built,
+because the trophy socket is the mechanic.
+
+### Colour is allocated, not chosen
+
+[ash-3-enter-gloam-knight.md](ash-3-enter-gloam-knight.md) on the Gloam Knight:
+
+> *"All a shiny dark blue purple-ish hue, like an empty night sky after sunset,
+> as if there should be stars."*
+
+That is the knight's entire identity in one line. If the protagonist is also the
+blue one, the antagonist reads as a darker recolour of the hero and both are
+weaker for it. **Blue-purple is spent on the Gloam Knight.** Timothy gets gold
+and bone.
+
+Worth generalising: in a small cast with a tiny shared palette, a colour used
+twice is a colour wasted. Assign them deliberately, per character, before
+painting anything.
+
+### Already correct — don't touch it
+
+The pale ovoid head with two dark eye voids is the original's masked face, same
+family, no notes. It is the most character-defining piece in the design and the
+model already has it. Move it toward bone-white during the palette pass and
+leave the geometry alone.
+
+### Open
+
+**How the cloak is built.** Cloth simulation is out — Godot's is painful and
+glTF will not carry it out of Blender regardless. A floor-length cape is also
+wrong for a camera sitting 2.25 m behind the head; it would fill the bottom of
+the frame. The current best candidate is a **short tattered shoulder mantle**
+skinned to two spine bones — nearly rigid, reads fully at silhouette, and a
+dust-caked robot in a torn cloak does not need to billow to land. Unproven.
+
+**Proportions.** The current model is longer-limbed and thinner than the
+original, which reads sturdier. Probably fine — long limbs and heavy boots are a
+good robot silhouette — but it is a rig change if it ever isn't, so it is not a
+cheap decision like the others here.
+
+---
+
+## 5. Environment Assets
 
 Yes to trees, rocks, ground, props, and structures — but **not yet**. Building a library before the game is known means building things the game won't use.
 
@@ -120,7 +228,7 @@ When the time comes:
 
 ---
 
-## 5. Milestone Ladder
+## 6. Milestone Ladder
 
 Threshold Deep–style: one clear goal at a time, milestoned before the next is set.
 
@@ -151,7 +259,7 @@ One room, one enemy, one weapon, one item. Prove that's fun; the rest is product
 
 ---
 
-## 6. Known Costs & Risks
+## 7. Known Costs & Risks
 
 **Third person raises the animation burden significantly.** First person needs arms. Third person needs idle, walk, run, turn, attack, hit-reaction, and death before the character stops looking broken. This is the real price of seeing the robot — budget for it.
 
@@ -169,7 +277,7 @@ One room, one enemy, one weapon, one item. Prove that's fun; the rest is product
 
 ---
 
-## 7. Open Questions
+## 8. Open Questions
 
 - Is the robot currently being rigged **the protagonist**? It changes how much the topology matters, and it's better decided before the rig is finished.
 - What locomotion foundation does the sandbox use — standard `CharacterBody3D` with `RayCast3D` nodes, or something else?
@@ -208,7 +316,7 @@ One room, one enemy, one weapon, one item. Prove that's fun; the rest is product
 
 ---
 
-## 8. Immediate Next Actions
+## 9. Immediate Next Actions
 
 1. Finish the robot rig — add socket bones before calling it done.
 2. Export clean `.glb` to Godot, confirm the import pipeline works end to end.

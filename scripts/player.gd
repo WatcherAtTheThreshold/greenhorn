@@ -184,7 +184,7 @@ const DEATH_HOLD   := 1.6
 ## Which weapon to hold. Blank means empty-handed. The weapon is never skinned
 ## and never rigged — it hangs off WEAPON_BONE, so changing this one string
 ## swaps the weapon with no re-export and no scene edit.
-@export var weapon_file := "props/sword.blend"
+@export var weapon_file := "props/stick.blend"
 
 var _yaw := 0.0
 var _pitch := -0.15

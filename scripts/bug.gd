@@ -22,6 +22,22 @@ const TURN_RATE   := 3.5    ## rad/s — sluggish on purpose, so you can circle 
 const GRAVITY     := 18.0   ## matches the player, so falls read the same
 const STOP_RANGE  := 1.2    ## metres. It has no attack, so it stops short
 
+# --- coming at you ----------------------------------------------------------
+## How far off a straight line one comes in, picked per beetle at spawn.
+##
+## Without it every one of them steers at the same point, arrives along the
+## same ray, and a group becomes a queue — only the front one can reach you,
+## and the rest are scenery until it dies. This is what turns six enemies into
+## six enemies rather than one enemy six times.
+##
+## 0 is the old behaviour. Much above 1 and they crab sideways more than they
+## advance, which reads as confusion rather than as flanking.
+const FLANK_MAX  := 0.85
+## Metres over which the sideways drift fades to nothing. Far out it curves
+## hard; inside this it commits and comes straight, so a flank is an approach
+## and not a permanent orbit.
+const FLANK_FADE := 9.0
+
 # --- body -------------------------------------------------------------------
 ## The collision capsule, not the model. A tiger beetle measures 1.14 m wide,
 ## 1.38 long and only 0.49 tall, so this is deliberately smaller than the
@@ -148,12 +164,17 @@ var _flash_left := 0.0
 var _hit_left := 0.0            ## staggered: not steering, so the shove reads
 var _meshes: Array[MeshInstance3D] = []
 var _flash_mat: StandardMaterial3D = null
+## Which way this one curves in, and how hard. Random per beetle rather than
+## seeded: the layout wants to be identical between attempts so runs compare,
+## but a group taking the same six paths every time reads as choreography.
+var _lean := 0.0
 
 
 func _ready() -> void:
 	# Seeded here, not at declaration: world.gd sets max_health after new() and
 	# before add_child, so an initialiser would capture the default instead.
 	_health = max_health
+	_lean = randf_range(-FLANK_MAX, FLANK_MAX)
 
 	# Size goes on the capsule and on the model holder, never on this body.
 	# Scaling a CharacterBody3D works with Jolt while the scale stays uniform,
@@ -248,8 +269,18 @@ func _physics_process(delta: float) -> void:
 	if target != null and not _dead and _hit_left <= 0.0 and _bite_left <= 0.0:
 		var to := target.global_position - global_position
 		to.y = 0.0
-		if to.length() > STOP_RANGE * size:
-			wish = to.normalized()
+		var gap := to.length()
+		if gap > STOP_RANGE * size:
+			var straight := to / gap
+			# Come in off the line. Everything steering at the same point
+			# arrives along the same ray, so a group turns into a queue with
+			# only the front one able to reach you.
+			#
+			# The sideways part fades with distance, so this curves in and
+			# commits rather than orbiting forever — and because `_lean` is
+			# per-beetle, a group fans out and arrives from several angles.
+			var side := Vector3(-straight.z, 0.0, straight.x) * _lean
+			wish = (straight + side * minf(gap / FLANK_FADE, 1.0)).normalized()
 
 	var want := wish * walk_speed
 	var rate := ACCEL if wish != Vector3.ZERO else FRICTION
