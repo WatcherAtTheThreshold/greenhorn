@@ -23,11 +23,11 @@ const GRAVITY     := 18.0   ## matches the player, so falls read the same
 const STOP_RANGE  := 1.2    ## metres. It has no attack, so it stops short
 
 # --- body -------------------------------------------------------------------
-## The collision capsule, not the model. bug3 measures 1.14 m wide, 1.38 long
-## and only 0.49 tall, so this is deliberately smaller than the beetle looks —
-## a capsule is a poor fit for something that flat, and one sized to the legs
-## would stop you well before you could see yourself reach it. It also will
-## not catch on the plot's stair nosings the way a box would.
+## The collision capsule, not the model. A tiger beetle measures 1.14 m wide,
+## 1.38 long and only 0.49 tall, so this is deliberately smaller than the
+## beetle looks — a capsule is a poor fit for something that flat, and one
+## sized to the legs would stop you well before you could see yourself reach
+## it. It also will not catch on the stair nosings the way a box would.
 const BODY_RADIUS := 0.32
 const BODY_HEIGHT := 0.7
 
@@ -108,20 +108,23 @@ const BITE_ARC      := 1.0   ## radians ~ 57 degrees either side of straight ahe
 const BITE_COOLDOWN := 1.1
 
 
-@export var model_file := "bug3.blend"
+@export var model_file := "tiger-beetle.blend"
 ## The carapace. Never skinned, never rigged — it rides SHELL_BONE, and
 ## breaking it reparents _shell onto a RigidBody3D.
 ##
 ## Two objects in one file, so it breaks into two halves that part company.
-@export var shell_file := "props/shell2.blend"
-## The bone that carapace rides. Per-instance rather than a const, because two
-## species with different rigs stand on the plot at once: bug2 calls it
-## `shell.socket`, bug3 `shell2.socket`.
+@export var shell_file := "props/tiger-beetle-shell.blend"
+## The bone that carapace rides. Every rig uses the same name, because it is a
+## role rather than a file — which is what lets the roster table drop a column
+## and a new species be two strings instead of three.
 ##
-## Naming a bone after the *file* rather than the part means every new shell
-## version drags a bone rename with it, and rigs are the expensive thing to
-## change. Worth settling on `shell.socket` when bug3 is next open.
-@export var shell_bone := "shell2.socket"
+## It briefly was not: one rig called it `shell2.socket`, after the file
+## version of the shell it happened to be wearing. That coupled a rig to a
+## filename, and rigs are the expensive thing to change.
+##
+## An export rather than a const anyway, so a species that genuinely needs a
+## different mount can have one without a special case.
+@export var shell_bone := "shell.socket"
 
 ## Who to walk at. world.gd hands us the player. Without one the bug just
 ## stands there idling, which is a perfectly good way to look at it.
@@ -490,7 +493,8 @@ func die() -> void:
 
 
 ## Whether this one can actually hurt you. It comes down to whether the model
-## brought an `attack` clip: bug2 did not, so it walks at you and never bites.
+## brought an `attack` clip: rain beetles did not, so one walks at you and
+## never bites.
 ##
 ## Only answers correctly once the model is mounted, which happens in _ready.
 func is_hostile() -> bool:

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://wya2oc2bya46"
-path="res://.godot/imported/Tim2.blend-06580fe57ac20ad441a80f349c03b56d.scn"
+uid="uid://cnhotsaolt0m7"
+path="res://.godot/imported/tiger-beetle-shell.blend-d18d3ed8ae880f8d8caea415123d2752.scn"
 
 [deps]
 
-source_file="res://assets/blender/Tim2.blend"
-dest_files=["res://.godot/imported/Tim2.blend-06580fe57ac20ad441a80f349c03b56d.scn"]
+source_file="res://assets/blender/props/tiger-beetle-shell.blend"
+dest_files=["res://.godot/imported/tiger-beetle-shell.blend-d18d3ed8ae880f8d8caea415123d2752.scn"]
 
 [params]
 

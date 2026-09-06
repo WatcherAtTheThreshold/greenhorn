@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://kbl2i8js3rlm"
-path="res://.godot/imported/jumping_spider.blend-08c309058983e06b433893d3bf04708e.scn"
+uid="uid://tykg8n1urq3x"
+path="res://.godot/imported/wip.blend-3e854555af19f9183fa1ad58329da87a.scn"
 
 [deps]
 
-source_file="res://assets/blender/jumping_spider.blend"
-dest_files=["res://.godot/imported/jumping_spider.blend-08c309058983e06b433893d3bf04708e.scn"]
+source_file="res://assets/blender/wip.blend"
+dest_files=["res://.godot/imported/wip.blend-3e854555af19f9183fa1ad58329da87a.scn"]
 
 [params]
 

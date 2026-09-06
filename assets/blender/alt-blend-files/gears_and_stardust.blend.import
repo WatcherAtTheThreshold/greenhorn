@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dgjnn74hxqlmh"
-path="res://.godot/imported/bug3.blend-04b9c5b0e58859bb075b0000e02363cc.scn"
+uid="uid://b6hfcg8gfb3fm"
+path="res://.godot/imported/gears_and_stardust.blend-85c0ab585ca5574f1c447e767669c01d.scn"
 
 [deps]
 
-source_file="res://assets/blender/bug3.blend"
-dest_files=["res://.godot/imported/bug3.blend-04b9c5b0e58859bb075b0000e02363cc.scn"]
+source_file="res://assets/blender/alt-blend-files/gears_and_stardust.blend"
+dest_files=["res://.godot/imported/gears_and_stardust.blend-85c0ab585ca5574f1c447e767669c01d.scn"]
 
 [params]
 

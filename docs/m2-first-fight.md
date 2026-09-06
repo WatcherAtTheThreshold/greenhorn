@@ -37,9 +37,9 @@ sandbox already has:
 | The shell | comes off on the second hit, splits, and clatters away as physics |
 | Scenery | trees and rocks scattered as MultiMeshes, one draw call each |
 | Structures | a shelter band at `z -42` — walls, a doorway, collision from Blender |
-| The bite | bug3 rears, opens its mandibles, and bites — frames 12–18 of 24 |
+| The bite | the tiger beetle rears, opens its mandibles, and bites — frames 12–18 of 24 |
 | Mortality | Tim has health, a `hit` clip, a `death` clip, and the plot rebuilds |
-| Two species | bug3 bites; bug2 has no `attack` clip and simply follows you |
+| Two species | tiger beetles bite; rain beetles have no `attack` clip and follow |
 
 **Every M2 system is built, and the fight has been won and lost.** What is
 left is not construction, it is the gate at the bottom of this document.
@@ -409,7 +409,7 @@ worth knowing before M3 designs a room.
 
 **A harmless enemy reads completely differently from a dangerous one.** The
 build where the bug could walk at you but neither of you could attack read as
-a *follower pet*, not an enemy, and that is now open question 5. bug2 still
+a *follower pet*, not an enemy, and that is now open question 5. The rain beetle still
 has no `attack` clip, so it still reads that way standing next to one that
 bites — which is the pacifist species from the story doc, arrived at through
 asset availability rather than design.

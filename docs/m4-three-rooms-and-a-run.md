@@ -26,7 +26,7 @@ gate answered 2026-09-02). Carried forward:
 |---|---|
 | Camera, movement, stairs | done, tuned |
 | Attacks, hit detection, feedback | done — flash, knockback, hitstop |
-| Two bug species | bug3 bites; bug2 follows and never attacks |
+| Two bug species | tiger beetles bite; rain beetles follow and never attack |
 | The shell | breaks, splits, clatters, exposes a soft body |
 | Sockets | shared by player and bug, one string to swap |
 | Scenery | trees and rocks as MultiMeshes, one draw call each |
@@ -182,8 +182,8 @@ Purpose per room, not difficulty per room:
 
 | Room | Job | Composition |
 |---|---|---|
-| 1 | Teach and warm up | 2–3 bug3, open ground, no geometry tricks |
-| 2 | Introduce the mixed group | bug3 + bug2 together, the doorway/chokepoint |
+| 1 | Teach and warm up | 2–3 tiger beetles, open ground, no geometry tricks |
+| 2 | Introduce the mixed group | both species together, the doorway/chokepoint |
 | 3 | Cost the decision | enough to threaten a damaged player |
 
 Room 2 is where the docile species earns rule 2 from the story doc — they are
@@ -250,7 +250,7 @@ object. And practically, the rogue-lite is the cheapest available route to an
 *ending*, which is what turns a sandbox into a game. Not the place to
 reconsider.
 
-**But run the free test.** Open question 5 keeps refusing to die. Put one bug2
+**But run the free test.** Open question 5 keeps refusing to die. Put one rain beetle
 in the run and let it follow across all three rooms. Existing systems, no new
 assets, no design decisions. It answers whether the follower reading survives
 contact with real combat — during M4 rather than instead of it.
@@ -265,7 +265,7 @@ contact with real combat — during M4 rather than instead of it.
 - [ ] Death returns you to the start with *something* retained
 - [ ] Room 2 mixes both species and has a chokepoint
 - [ ] Lighting and ground pass done — it no longer reads as a test plot
-- [ ] One bug2 followed you the whole way, and you noticed how that felt
+- [ ] One rain beetle followed you the whole way, and you noticed how that felt
 
 And the actual gate, which is not a checkbox:
 

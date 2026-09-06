@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://bqcaalv61cef1"
-path="res://.godot/imported/shell.blend-91917be5ad5cc2554fb519e2eb1d37e7.scn"
+path="res://.godot/imported/rain-beetle-shell.blend-3cc92f82804f85ffc0014058f27595a7.scn"
 
 [deps]
 
-source_file="res://assets/blender/props/shell.blend"
-dest_files=["res://.godot/imported/shell.blend-91917be5ad5cc2554fb519e2eb1d37e7.scn"]
+source_file="res://assets/blender/props/rain-beetle-shell.blend"
+dest_files=["res://.godot/imported/rain-beetle-shell.blend-3cc92f82804f85ffc0014058f27595a7.scn"]
 
 [params]
 

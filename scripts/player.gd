@@ -168,13 +168,23 @@ const DEATH_HOLD   := 1.6
 ## way you can swap the contents of assets/blender/ freely and nothing here
 ## needs touching.
 @export var character_scene: PackedScene
-## Leave blank to wear the first rigged model found. Set e.g. "cat.blend" to
-## pin it to one file.
-@export var character_file := ""
+## Who you are. Blank falls back to the first rigged model in
+## assets/blender/, which is the sandbox behaviour — drop a `.blend` in and
+## wear it.
+##
+## Named rather than blank, because "first rigged model" means *first
+## alphabetically*, and a protagonist chosen by sort order is a protagonist
+## you lose to a rename. `Tim2.blend` held the part only because a capital T
+## sorts ahead of every lowercase letter; lowercasing him to `tim.blend` put
+## him last and promoted a beetle.
+##
+## If this names a file that is missing or unrigged it warns and falls back,
+## so a typo costs you a line in the log rather than a mystery.
+@export var character_file := "tim.blend"
 ## Which weapon to hold. Blank means empty-handed. The weapon is never skinned
 ## and never rigged — it hangs off WEAPON_BONE, so changing this one string
 ## swaps the weapon with no re-export and no scene edit.
-@export var weapon_file := "props/sword1.blend"
+@export var weapon_file := "props/sword.blend"
 
 var _yaw := 0.0
 var _pitch := -0.15
@@ -318,20 +328,35 @@ func _adopt_model() -> void:
 			names.append(f)
 	names.sort()
 
-	for n in names:
-		if character_file != "" and n != character_file:
-			continue
-		var res := load(Socket.MODEL_DIR + n)
-		if not (res is PackedScene):
-			continue
-		var inst: Node = (res as PackedScene).instantiate()
-		# only wear something with a skeleton — otherwise the first thing in
-		# the folder might be a table, and you would be wearing the table
-		if inst.find_children("*", "Skeleton3D", true, false).is_empty():
-			inst.queue_free()
-			continue
-		body.add_child(inst)
+	if character_file != "" and _try_wear(character_file):
 		return
+	if character_file != "":
+		push_warning(("greenhorn: no rigged model called %s, so falling back "
+			+ "to whatever is first in assets/blender/. Which is decided "
+			+ "alphabetically, so it may well be an enemy.") % character_file)
+
+	for n in names:
+		if _try_wear(n):
+			return
+
+
+## Put a model in Body if it is a scene and it has a skeleton. Returns whether
+## it worked.
+##
+## The skeleton check is what stops the sandbox dressing you as a table when a
+## table happens to sort first.
+func _try_wear(file: String) -> bool:
+	if not ResourceLoader.exists(Socket.MODEL_DIR + file):
+		return false
+	var res := load(Socket.MODEL_DIR + file)
+	if not (res is PackedScene):
+		return false
+	var inst: Node = (res as PackedScene).instantiate()
+	if inst.find_children("*", "Skeleton3D", true, false).is_empty():
+		inst.queue_free()
+		return false
+	body.add_child(inst)
+	return true
 
 
 ## A hitbox shaped like whatever weapon actually arrived.

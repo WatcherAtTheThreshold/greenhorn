@@ -17,6 +17,25 @@ toward "does this help you see whether the model is right."
   colour anywhere else; the whole point is being able to re-grade in one file.
 - Commit `.uid` and `.import` sidecars. Never commit `.godot/`.
 
+## Naming assets
+
+**A filename names the thing, never the version.** Git holds versions. A
+`Tim2.blend` next to an archived `Tim.blend` is doing by hand what the repo
+does for free, and it leaks: one shell version produced a bone called
+`shell2.socket`, coupling a rig to a filename.
+
+**Number the interchangeable, name the distinguished.** `tree1` and `rock1`
+are fine — they are slots, more are coming, and nobody looks at a tree and
+cares which. Anything the player tells apart gets a real name: species,
+weapons, characters.
+
+**Pair by name, not by number.** `tiger-beetle` wears `tiger-beetle-shell`.
+The roster in `world.gd` is the actual pairing; matching numbers would be a
+second convention saying the same thing, free to drift from the first.
+
+Renaming in place is cheap — it does not touch a `.blend`'s relative texture
+paths. *Moving* a file does, and breaks them silently.
+
 ## Art direction
 
 Bright, earthy, upbeat. Not pastel, not candy. Warm sun, cool sky fill, soft

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dx344vewpmjti"
-path="res://.godot/imported/sword1.blend-61a1d0c71ed8b8ab5fafa1c761fd0dff.scn"
+uid="uid://cyts6p3bsokyb"
+path="res://.godot/imported/rain-beetle.blend-72ab7513ec68eb4c109c623125d8e3d9.scn"
 
 [deps]
 
-source_file="res://assets/blender/props/sword1.blend"
-dest_files=["res://.godot/imported/sword1.blend-61a1d0c71ed8b8ab5fafa1c761fd0dff.scn"]
+source_file="res://assets/blender/rain-beetle.blend"
+dest_files=["res://.godot/imported/rain-beetle.blend-72ab7513ec68eb4c109c623125d8e3d9.scn"]
 
 [params]
 

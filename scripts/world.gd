@@ -51,6 +51,11 @@ const PILLAR_FILE   := "scenery/pillar.blend"
 ## notice you won.
 const WAVE_GAP := 2.5
 
+# --- the plinth row ---------------------------------------------------------
+## Minimum seconds a plinth holds one clip before moving to the next. Long
+## clips get their own length instead, so nothing is cut off mid-motion.
+const REEL_HOLD := 2.6
+
 # --- the boss ---------------------------------------------------------------
 ## Waves survived before it turns up. Beating it ends the run — that is the
 ## "exit" half of enter/clear/exit, and the reason a wave counter alone is a
@@ -134,15 +139,19 @@ const BUG_SPAWN  := Vector3(9.0, 0.4, 4.0)
 ## against a single target. A swing that sweeps through two of them is the
 ## first honest test of the hit window, the cancel window and the knockback.
 const BUG_COUNT  := 6
-## The roster: a model, its carapace, and the bone that carapace rides. Spawns
-## cycle through it, so two species arrive mixed rather than in blocks.
+## The roster: a species and the carapace it wears. Spawns cycle through it,
+## so the species arrive mixed rather than in blocks.
 ##
-## bug2 has no `attack` clip, so it cannot bite — everything degrades, and it
-## simply walks at you while bug3 does the damage. That is the pacifist
-## species from the story doc, arrived at by accident rather than by design.
+## Tiger beetles bite. Rain beetles do not — no `attack` clip, so everything
+## degrades and one simply walks at you while the other does the damage. That
+## is the pacifist species from the story doc, and it needs no support beyond
+## not giving it an animation.
+##
+## A species with no shell is `""`, which the socket code already treats as
+## nothing to equip. Adding one is a row, not a code change.
 const BUG_KINDS := [
-	{"model": "bug3.blend", "shell": "props/shell2.blend", "bone": "shell2.socket"},
-	{"model": "bug2.blend", "shell": "props/shell.blend",  "bone": "shell.socket"},
+	{"model": "tiger-beetle.blend", "shell": "props/tiger-beetle-shell.blend"},
+	{"model": "rain-beetle.blend",  "shell": "props/rain-beetle-shell.blend"},
 ]
 ## Ring radius at spawn. Far enough apart that they do not start inside each
 ## other; close enough that they arrive as a group rather than a queue.
@@ -192,6 +201,7 @@ var _next_room := 0           ## the only one that will trigger
 var _sheltered := false
 var _mend := 0.0
 var _rings := 0               ## MultiMesh names have to be unique
+var _reels: Array[Dictionary] = []   ## one per plinth, cycling its clips
 
 
 func _ready() -> void:
@@ -301,9 +311,11 @@ func _on_shelter_left(body: Node3D) -> void:
 		_sheltered = false
 
 
-## Damage only comes back inside. That single asymmetry is what turns the
-## detour into a decision instead of a formality.
+## Two things that tick: the plinth row cycling its clips, and the shelter
+## mending you. Damage only comes back inside — that single asymmetry is what
+## turns the detour into a decision instead of a formality.
 func _process(delta: float) -> void:
+	_run_reels(delta)
 	if not _sheltered or _player == null or not _player.has_method("heal"):
 		return
 	_mend += delta * MEND_RATE
@@ -375,7 +387,6 @@ func _spawn_group(count: int, at: Vector3, spread: float) -> void:
 		var b := Bug.new()
 		b.model_file = kind["model"]
 		b.shell_file = kind["shell"]
-		b.shell_bone = kind["bone"]
 		b.position = at + Vector3(cos(a), 0.0, sin(a)) * spread
 		# Handing each one the player directly beats a group lookup: the world
 		# already holds both, and there is nothing to go stale.
@@ -395,9 +406,9 @@ func _spawn_group(count: int, at: Vector3, spread: float) -> void:
 func _spawn_boss(at: Vector3) -> void:
 	var b := Bug.new()
 	b.name = "Boss"
-	b.model_file = "bug3.blend"
-	b.shell_file = "props/shell2.blend"
-	b.shell_bone = "shell2.socket"
+	b.model_file = "tiger-beetle.blend"
+	b.shell_file = "props/tiger-beetle-shell.blend"
+	b.shell_bone = "shell.socket"
 	b.size = BOSS_SIZE
 	b.max_health = BOSS_HEALTH
 	b.shell_hits = BOSS_SHELL_HITS
@@ -982,6 +993,12 @@ func _mount_imports() -> void:
 			Palette.STONE_LIGHT)
 		_label(note, Vector3(px, top + 0.36, PLINTH_Z), 24, Palette.ACCENT)
 		_label(_census(holder), Vector3(px, top + 0.14, PLINTH_Z), 22, Palette.STONE_LIGHT)
+		# Under everything else: which clip is playing right now. A caption
+		# listing six names tells you they exported; this tells you which one
+		# you are looking at.
+		if not _reels.is_empty() and _reels[-1]["caption"] == null:
+			_reels[-1]["caption"] = _label("", Vector3(px, base.y + 0.5, PLINTH_Z + 1.3),
+				28, Palette.ACCENT)
 
 	# a 1 m cube beside the row, so a scale mistake is obvious at a glance
 	var refx := float(names.size()) * 1.9 + 1.8
@@ -991,7 +1008,7 @@ func _mount_imports() -> void:
 
 
 ## Every model under assets/blender/, subfolders included, as paths relative
-## to it — so `props/sword1.blend` comes back ready to hand to `load()`.
+## to it — so `props/sword.blend` comes back ready to hand to `load()`.
 ##
 ## Recursive on purpose. Organising assets into folders should not quietly
 ## drop them off the plinth row: the captions are the only place that reports
@@ -1036,9 +1053,13 @@ func _visual_top(n: Node) -> float:
 	return best
 
 
-## Loop something on a mounted model so you can see it move, and report what
-## came through. If a caption says "no animations" the export is the problem,
-## not the engine.
+## Cycle a mounted model through every clip it brought, and report what came
+## through. If a caption says "no animations" the export is the problem, not
+## the engine.
+##
+## Cycling rather than holding an idle, because the plinth row is the only
+## place you can look at a clip without playing the game to reach it — a death
+## has to be earned, an attack has to be provoked. Here they just come round.
 func _autoplay(inst: Node) -> String:
 	var ap := AnimPick.find_player(inst)
 	if ap == null:
@@ -1046,18 +1067,34 @@ func _autoplay(inst: Node) -> String:
 	var list := ap.get_animation_list()
 	if list.is_empty():
 		return "no animations"
-	# Idle first. A plinth is a display stand, and a walk cycle running on
-	# the spot reads as a treadmill; an idle reads as "here is the character".
-	var pick := ""
-	for want in ["idle", "walk", "run"]:
-		pick = AnimPick.find(ap, want)
-		if pick != "":
-			break
-	if pick == "":
-		pick = list[0]
-	AnimPick.loop(ap, pick)
-	ap.play(pick)
+	_reels.append({"ap": ap, "clips": list, "at": 0, "left": 0.0, "caption": null})
 	return "%d anim: %s" % [list.size(), ", ".join(list)]
+
+
+## Step every plinth to its next clip when the current one has had its time.
+##
+## Each stand runs its own timer rather than a shared one: clips vary from
+## half a second to two, and marching them in lockstep would either rush the
+## long ones or stall on the short.
+func _run_reels(delta: float) -> void:
+	for reel in _reels:
+		reel["left"] -= delta
+		if reel["left"] > 0.0:
+			continue
+		var ap: AnimationPlayer = reel["ap"]
+		var clips: PackedStringArray = reel["clips"]
+		var clip := clips[reel["at"] % clips.size()]
+		reel["at"] += 1
+		AnimPick.loop(ap, clip)
+		ap.play(clip)
+		ap.seek(0.0, true)
+		# Long enough for a short clip to repeat a few times and a long one to
+		# finish, so a one-second death is not cut off at the knees.
+		var a := ap.get_animation(clip)
+		reel["left"] = maxf(REEL_HOLD, (a.length if a else 0.0) * 1.5)
+		var caption: Label3D = reel["caption"]
+		if caption != null:
+			caption.text = clip
 
 
 ## What arrived structurally, not just what it can play. Two skeletons in one
